@@ -1,0 +1,23 @@
+# ADE20K "ceiling" run (§4 table note: "40k for the one ceiling run"). Context only, not
+# used for method comparisons on ADE20K — those use ade20k_proxy. 16 epochs
+# (20210/8=2526 steps/epoch) is ~40,416 steps, matching the pre-ADR 40,000-iteration budget.
+name: ade20k_ceiling
+epochs: 16
+warmup_epochs: 2
+batch_size: 8
+optimizer: adamw
+lr: 6.0e-5
+weight_decay: 0.01
+lr_schedule: poly
+poly_power: 1.0
+min_lr: 0.0
+warmup_ratio: 1.0e-6
+precision: amp_fp16
+grad_clip_norm: null
+num_workers: 8
+seed_train: 0
+eval_every_epochs: 2
+eval_max_images: 100
+eval_resize_short_side: 512
+save_every_epochs: 2
+log_every: 50

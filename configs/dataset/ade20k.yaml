@@ -1,0 +1,17 @@
+# Scale/diversity dataset (§2, Stage 2/5). Already on disk at the default path below
+# (ADEChallengeData2016 layout). Class names are read from `objectInfo150.txt` in `root`.
+name: ade20k
+root: ${oc.env:ADE20K_ROOT,/home/cognition/datasets/ADEChallengeData2016}
+num_classes: 150
+ignore_index: 255 # raw label 0 (background) is dropped and mapped to ignore_index
+train_split: training
+val_split: validation
+crop_size: [512, 512] # [H, W]
+photometric_jitter: true
+rare_class_k: 15 # bottom-K by pixel frequency; override with --k in 01_compute_rare_classes.py
+rare_classes_cache: results/rare_classes/ade20k.json
+eval:
+  mode: whole_image # §2: single-scale whole-image eval
+  resize_short_side: 512 # resize for eval memory/speed, logits upsampled back for scoring
+mean: [0.485, 0.456, 0.406]
+std: [0.229, 0.224, 0.225]

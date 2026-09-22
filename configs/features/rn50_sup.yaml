@@ -1,0 +1,8 @@
+# Classification-representation arm of the representation study (§6 `rn50_sup`, Contribution 3).
+name: rn50_sup
+backend: resnet
+model_name: resnet50
+weights: IMAGENET1K_V2
+outputs: [cls]
+image_size: 224
+batch_size: 64

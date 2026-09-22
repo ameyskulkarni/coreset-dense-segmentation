@@ -1,0 +1,5 @@
+# Fallback CNN for Stage 4 (§3) if DeepLabV3+'s per-run time is too costly for the seed budget.
+name: unet_r34
+arch: unet
+encoder_name: resnet34
+encoder_weights: imagenet

@@ -1,0 +1,10 @@
+# Stage 1 kill-shot cell (§10): random baseline at 20% on the main testbed. Requires
+# Cityscapes on disk (pending approval) — see `root` in configs/dataset/cityscapes.yaml.
+dataset: cityscapes
+model: segformer_b0
+recipe: cityscapes_proxy
+selection: random
+ratio: 0.2
+wandb:
+  project: coreset-dense-segmentation
+  mode: online

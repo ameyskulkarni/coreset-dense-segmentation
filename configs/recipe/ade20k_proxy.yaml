@@ -1,0 +1,30 @@
+# The frozen proxy training recipe (§4, ADR 0001) for ADE20K method comparisons. Same
+# LR/schedule/optimizer as cityscapes_proxy — only `epochs` differs, because ADE20K's
+# full train set (20,210 imgs) is ~7x larger than Cityscapes' (2,975), so the SAME epoch
+# count would mean ~7x more compute per run. 8 epochs (20210/8=2526 steps/epoch) is
+# ~20,210 steps, matching the pre-ADR 20,000-iteration budget almost exactly.
+#
+# NOTE: with only 8 total epochs, 1 warmup epoch is 12.5% of the schedule (vs ~6% for
+# Cityscapes) — an unavoidable granularity effect of expressing warmup in whole epochs
+# on a short schedule. Revisit if the discriminativeness check (§4) shows this recipe
+# underperforms because of it.
+name: ade20k_proxy
+epochs: 8
+warmup_epochs: 1
+batch_size: 8
+optimizer: adamw
+lr: 6.0e-5
+weight_decay: 0.01
+lr_schedule: poly
+poly_power: 1.0
+min_lr: 0.0
+warmup_ratio: 1.0e-6
+precision: amp_fp16
+grad_clip_norm: null
+num_workers: 8
+seed_train: 0
+eval_every_epochs: 1
+eval_max_images: 100
+eval_resize_short_side: 512
+save_every_epochs: 1
+log_every: 50

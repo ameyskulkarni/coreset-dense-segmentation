@@ -1,0 +1,6 @@
+# Primary workhorse (§3) — used for the diagnostic, representation study, and method
+# development. Encoder is ImageNet-1k pretrained; the decode head is random-init and
+# trained from scratch on every run (same recipe, only the subset content varies).
+name: segformer_b0
+arch: segformer
+pretrained: nvidia/mit-b0

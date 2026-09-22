@@ -1,0 +1,38 @@
+# The frozen proxy training recipe (§4, ADR 0001 — docs/adr/0001-epoch-based-training.md,
+# see the amendments for the epoch-count and schedule history) for Cityscapes method
+# comparisons. Tune ONCE on the full dataset only (§9); freeze and reuse identically
+# across every selection method, ratio, and seed — the only thing that may vary is which
+# images are in the subset, and (deliberately, per the ADR) the resulting wall-clock time.
+#
+# `epochs` replaces the old iteration cap: every run trains for this many passes over
+# whatever subset it was given, so a 10% subset does ~10% of the full run's gradient
+# steps — the compute savings ARE a reported result now, not a confound held fixed.
+# 50 epochs on full Cityscapes (2975 imgs / batch 8 = 371 steps/epoch) is ~18,550 steps,
+# close to the pre-ADR 20,000-iteration budget, so the full-data reference run's wall-clock
+# is roughly unchanged; subset runs now get proportionally faster instead of being padded
+# out to match.
+#
+# LR schedule is `poly` (power 1.0 = linear decay to zero) — this is the literature-
+# standard SegFormer/mmseg fine-tuning schedule, not a "fancy" choice (power=1.0 is just
+# a straight line, no more complex than `cosine`).
+name: cityscapes_proxy
+epochs: 50
+warmup_epochs: 3 # ~6% of the schedule, matching the original 1500/20000 warmup fraction
+batch_size: 8
+optimizer: adamw
+lr: 6.0e-5
+weight_decay: 0.01
+lr_schedule: poly # poly | cosine | constant — see docs/adr/0001-epoch-based-training.md
+poly_power: 1.0
+min_lr: 0.0 # decays fully to 0 by the end of training
+warmup_ratio: 1.0e-6 # linear warmup starts at base_lr * warmup_ratio
+precision: amp_fp16
+grad_clip_norm: null
+num_workers: 8
+seed_train: 0 # RNG init/order seed; override with --seed at the CLI
+eval_every_epochs: 5 # periodic in-training eval (fast, whole-image, subsampled — see eval_max_images)
+eval_max_images: 100
+eval_resize_short_side: 512
+save_every_epochs: 5
+log_every: 50 # step-count logging cadence (loss smoothing window) — NOT a schedule/length
+              # parameter; the one place a raw step count is still the natural unit.

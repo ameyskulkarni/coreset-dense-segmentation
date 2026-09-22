@@ -1,0 +1,6 @@
+# Stage-4 generalization check (§3) — standard modern-CNN segmentation baseline, gives
+# the cleanest "different architecture family" contrast to SegFormer-B0.
+name: deeplabv3plus_r50
+arch: deeplabv3plus
+encoder_name: resnet50
+encoder_weights: imagenet

@@ -1,0 +1,12 @@
+# Default representation (§6 `dinov2_cls` / `dinov2_patch`) — global-embedding baselines
+# and the `patch_coverage` method both read from here. ViT-S/14 for speed, per the plan.
+# Downloaded automatically via torch.hub on first use (facebookresearch/dinov2).
+name: dinov2_vits14
+backend: dinov2
+model_name: dinov2_vits14
+source: torch_hub
+hub_repo: facebookresearch/dinov2
+patch_size: 14
+outputs: [cls, patch]
+image_size: 518 # multiple of patch_size (14 * 37)
+batch_size: 32

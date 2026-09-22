@@ -1,0 +1,27 @@
+[project]
+name = "segcoreset"
+version = "0.1.0"
+description = "Label-free coreset selection for semantic segmentation — training and evaluation system."
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.6", # transformers refuses torch.load on <2.6 for non-safetensors checkpoints (CVE-2025-32434)
+    "torchvision>=0.16",
+    "transformers>=4.40",
+    "segmentation-models-pytorch>=0.3.3",
+    "omegaconf>=2.3",
+    "numpy",
+    "pillow",
+    "scipy",
+    "scikit-learn",
+    "opencv-python-headless",
+    "wandb",
+    "tqdm",
+    "pandas",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["segcoreset*"]

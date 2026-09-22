@@ -1,0 +1,28 @@
+# CamVid pilot recipe (§4, Stage 0). Same LR/schedule/optimizer as cityscapes_proxy —
+# only `epochs`/`batch_size` differ for the smaller dataset. 300 epochs (367/16=22
+# steps/epoch) is ~6,600 steps — somewhat shorter than the pre-ADR 10,000-iteration
+# budget, a deliberate choice since Stage 0's numbers are discarded scientifically
+# (§10: "shake out the loop... discard numbers, keep the code"); speed matters more than
+# exactly matching the old convergence depth here. Bump `epochs` if the
+# discriminativeness check (§4) shows this pilot recipe can't tell full-data from
+# random-subset apart.
+name: camvid_proxy
+epochs: 300
+warmup_epochs: 15
+batch_size: 16
+optimizer: adamw
+lr: 6.0e-5
+weight_decay: 0.01
+lr_schedule: poly
+poly_power: 1.0
+min_lr: 0.0
+warmup_ratio: 1.0e-6
+precision: amp_fp16
+grad_clip_norm: null
+num_workers: 8
+seed_train: 0
+eval_every_epochs: 30
+eval_max_images: 100
+eval_resize_short_side: null
+save_every_epochs: 30
+log_every: 50

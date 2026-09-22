@@ -1,0 +1,14 @@
+# Runnable today: SegFormer-B0 on a random 20% ADE20K subset, frozen proxy recipe.
+# (ADE20K is already on disk; Cityscapes is the paper's main testbed once approved.)
+#
+#   python scripts/02_select.py  --experiment configs/experiment/example_ade20k_random20.yaml --seed 0
+#   python scripts/03_train.py   --experiment configs/experiment/example_ade20k_random20.yaml --seed 0 \
+#       --subset results/subsets/ade20k_random_0.2_0.json
+dataset: ade20k
+model: segformer_b0
+recipe: ade20k_proxy
+selection: random
+ratio: 0.2
+wandb:
+  project: coreset-dense-segmentation
+  mode: online

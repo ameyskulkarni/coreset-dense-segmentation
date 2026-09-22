@@ -1,0 +1,24 @@
+# Reference denominator #2 (§4): the true ceiling, run once on 100% Cityscapes for
+# context. Not used for method comparisons — those are all matched at cityscapes_proxy's
+# 50-epoch budget. 160 epochs (2975/8=371 steps/epoch) is ~59,360 steps, close to the
+# pre-ADR 60,000-iteration ceiling budget.
+name: cityscapes_ceiling
+epochs: 160
+warmup_epochs: 10
+batch_size: 8
+optimizer: adamw
+lr: 6.0e-5
+weight_decay: 0.01
+lr_schedule: poly
+poly_power: 1.0
+min_lr: 0.0
+warmup_ratio: 1.0e-6
+precision: amp_fp16
+grad_clip_norm: null
+num_workers: 8
+seed_train: 0
+eval_every_epochs: 16
+eval_max_images: 100
+eval_resize_short_side: 512
+save_every_epochs: 16
+log_every: 50

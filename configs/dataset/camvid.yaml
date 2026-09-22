@@ -1,0 +1,18 @@
+# Pilot/debug dataset (§2, Stage 0) — shakes out the pipeline before Cityscapes. Expects
+# the classic SegNet-Tutorial 11-class layout: <root>/{train,val,test}/*.png +
+# <root>/{train,val,test}annot/*.png (label values 0-10, void=11).
+name: camvid
+root: ${oc.env:CAMVID_ROOT,/home/cognition/datasets/camvid}
+num_classes: 11
+ignore_index: 255
+train_split: train
+val_split: val
+crop_size: [480, 480] # [H, W]
+photometric_jitter: true
+rare_class_k: 3
+rare_classes_cache: results/rare_classes/camvid.json
+eval:
+  mode: whole_image
+  resize_short_side: null
+mean: [0.485, 0.456, 0.406]
+std: [0.229, 0.224, 0.225]

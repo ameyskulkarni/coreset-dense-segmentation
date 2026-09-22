@@ -1,0 +1,13 @@
+# DINOv3 alternative representation, loaded via HuggingFace `transformers` (downloaded
+# automatically on first use). Swap into any experiment by pointing `features:` at this
+# file instead of dinov2_vits14 — no other code changes needed. Verify the HF output
+# format (register-token count) against your installed `transformers` version before
+# trusting numbers from this path; DINOv2 is the plan's tested default.
+name: dinov3_vits16
+backend: dinov3
+model_name: facebook/dinov3-vits16-pretrain-lvd1689m
+source: hf
+patch_size: 16
+outputs: [cls, patch]
+image_size: 512
+batch_size: 32

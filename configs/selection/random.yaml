@@ -1,0 +1,4 @@
+# The floor baseline (§5.1): uniform random subset, no features used. 3-5 seeds — this is
+# the variance band every other method is judged against.
+name: random
+method: random

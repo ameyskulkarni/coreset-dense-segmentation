@@ -1,0 +1,7 @@
+# Optional extra representation point (§6 `clip_cls`).
+name: clip_vitb32
+backend: clip
+model_name: openai/clip-vit-base-patch32
+outputs: [cls]
+image_size: 224
+batch_size: 64

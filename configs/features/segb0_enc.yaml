@@ -1,0 +1,10 @@
+# Segmentation-representation arm of the representation study (§6 `segb0_enc`, Contribution 3).
+# Uses the ImageNet-pretrained SegFormer-B0 encoder by default; point `checkpoint` at a
+# short full-data-trained run's weights to use a segmentation-adapted encoder instead.
+name: segb0_enc
+backend: segb0_encoder
+pretrained: nvidia/mit-b0
+checkpoint: null
+outputs: [cls]
+image_size: 512
+batch_size: 32

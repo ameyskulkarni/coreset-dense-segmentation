@@ -1,0 +1,9 @@
+# Reference denominator (§4): 100% data at the SAME matched epoch budget as every
+# subset run — this is the discriminativeness-check baseline and the retention denominator.
+dataset: ade20k
+model: segformer_b0
+recipe: ade20k_proxy
+selection: full
+wandb:
+  project: coreset-dense-segmentation
+  mode: online

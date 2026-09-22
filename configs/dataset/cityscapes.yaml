@@ -1,0 +1,17 @@
+# Main testbed (§2, §10 Stage 1+). Requires the official Cityscapes download
+# (leftImg8bit + gtFine), pending approval. Set CITYSCAPES_ROOT or edit `root` below.
+name: cityscapes
+root: ${oc.env:CITYSCAPES_ROOT,/home/cognition/datasets/cityscapes}
+num_classes: 19
+ignore_index: 255
+train_split: train
+val_split: val
+crop_size: [512, 1024] # [H, W]
+photometric_jitter: true
+rare_class_k: 5 # bottom-K by pixel frequency (§2); frozen once by 01_compute_rare_classes.py
+rare_classes_cache: results/rare_classes/cityscapes.json
+eval:
+  mode: sliding_window # §2: sliding-window at 512x1024, stride 2/3 of crop (mmseg convention)
+  stride: [341, 683]
+mean: [0.485, 0.456, 0.406]
+std: [0.229, 0.224, 0.225]

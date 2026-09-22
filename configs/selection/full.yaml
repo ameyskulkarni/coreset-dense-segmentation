@@ -1,0 +1,4 @@
+# Reference denominator (§4): the entire train set. Used for the matched-budget and
+# long-budget ceiling runs, not as a competing selection method.
+name: full
+method: full
