@@ -1,1 +1,1 @@
-run_id,git_commit,config_hash,timestamp,dataset,model,selection_method,representation,ratio,seed,n_images,epochs,iterations,miou,rare_class_miou,pixel_acc,boundary_f,per_class_iou_json,retention_vs_full_matched,gpu_hours_train,selection_seconds,notes
+run_id,git_commit,config_hash,wandb_run_id,wandb_url,timestamp,dataset,model,selection_method,representation,ratio,seed,n_images,epochs,iterations,lr,lr_schedule,miou,rare_class_miou,pixel_acc,boundary_f,per_class_iou_json,retention_vs_full_matched,gpu_hours_train,selection_seconds,notes

@@ -64,6 +64,8 @@ def main():
         "n_images": None,
         "epochs": cfg.recipe.get("epochs"),
         "iterations": ckpt.get("iteration"),
+        "lr": cfg.recipe.get("lr"),
+        "lr_schedule": cfg.recipe.get("lr_schedule"),
         "miou": metrics["miou"],
         "rare_class_miou": metrics.get("rare_class_miou"),
         "pixel_acc": metrics["pixel_acc"],
