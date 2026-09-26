@@ -7,17 +7,19 @@
 # `epochs` replaces the old iteration cap: every run trains for this many passes over
 # whatever subset it was given, so a 10% subset does ~10% of the full run's gradient
 # steps — the compute savings ARE a reported result now, not a confound held fixed.
-# 50 epochs on full Cityscapes (2975 imgs / batch 8 = 371 steps/epoch) is ~18,550 steps,
-# close to the pre-ADR 20,000-iteration budget, so the full-data reference run's wall-clock
-# is roughly unchanged; subset runs now get proportionally faster instead of being padded
-# out to match.
+# 100 epochs on full Cityscapes (2975 imgs / batch 8 = 371 steps/epoch) is 37,100 steps —
+# MEASURED at 1.34 GPU-hours on a single RTX 3090 (see the run
+# cityscapes_segformer_b0_full_r1.0_s0_5f5b8a21cd4b in results/runs.csv, mIoU=71.21%),
+# not an estimate. This value was tested via `--set recipe.epochs=100` before being
+# frozen here so future runs don't need the override.
 #
 # LR schedule is `poly` (power 1.0 = linear decay to zero) — this is the literature-
 # standard SegFormer/mmseg fine-tuning schedule, not a "fancy" choice (power=1.0 is just
 # a straight line, no more complex than `cosine`).
 name: cityscapes_proxy
-epochs: 50
-warmup_epochs: 3 # ~6% of the schedule, matching the original 1500/20000 warmup fraction
+epochs: 100
+warmup_epochs: 6 # 6% of the schedule — ~2,226 steps, close to the SegFormer/mmseg
+                 # convention's fixed absolute warmup_iters=1500
 batch_size: 8
 optimizer: adamw
 lr: 6.0e-5
