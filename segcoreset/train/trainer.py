@@ -13,6 +13,7 @@ AMP, logging, eval) is shared.
 """
 from __future__ import annotations
 
+import logging
 import random
 import time
 from pathlib import Path
@@ -30,6 +31,8 @@ from ..utils.seed import set_seed
 from .checkpoint import save_checkpoint
 from .losses import build_loss
 from .lr_schedule import WarmupLR
+
+logger = logging.getLogger(__name__)
 
 
 def _seed_worker(worker_id: int) -> None:
@@ -102,6 +105,11 @@ class Trainer:
         log_every = cfg.recipe.get("log_every", 50)
         grad_clip = cfg.recipe.get("grad_clip_norm")
 
+        logger.info(
+            f"starting training: {cfg.recipe.epochs} epochs x {self.steps_per_epoch} steps/epoch "
+            f"= {total_iters} total steps ({len(self.train_ds)} images, batch {cfg.recipe.batch_size})"
+        )
+
         self.model.train()
         running_loss = 0.0
         window_t0 = time.time()
@@ -131,8 +139,14 @@ class Trainer:
                 running_loss = 0.0
                 ips = log_every * cfg.recipe.batch_size / (time.time() - window_t0)
                 window_t0 = time.time()
+                epoch = it / self.steps_per_epoch
                 self._log({"train/loss": avg_loss, "train/lr": lr, "train/imgs_per_sec": ips,
-                            "train/epoch": it / self.steps_per_epoch}, step=it)
+                            "train/epoch": epoch}, step=it)
+                eta_min = (total_iters - it) * cfg.recipe.batch_size / ips / 60
+                logger.info(
+                    f"epoch {epoch:6.2f}/{cfg.recipe.epochs} step {it}/{total_iters} "
+                    f"loss={avg_loss:.4f} lr={lr:.2e} imgs/s={ips:.1f} eta={eta_min:.0f}min"
+                )
 
             if eval_every and it % eval_every == 0 and it < total_iters:
                 metrics = self.evaluator.evaluate(
@@ -140,16 +154,23 @@ class Trainer:
                     mode="whole_image", resize_short_side=cfg.recipe.get("eval_resize_short_side"),
                 )
                 self._log({f"val/{k}": v for k, v in metrics.items() if k != "per_class_iou"}, step=it)
+                logger.info(f"[eval @ step {it}] val/miou={metrics['miou']:.4f} val/pixel_acc={metrics['pixel_acc']:.4f}")
                 self.model.train()
 
             if save_every and it % save_every == 0:
                 save_checkpoint(self.run_dir / "last.pt", self.model, self.optimizer, it)
+                logger.info(f"checkpoint saved -> {self.run_dir / 'last.pt'}")
 
         gpu_hours = (time.time() - start_time) / 3600
         save_checkpoint(self.run_dir / "final.pt", self.model, self.optimizer, total_iters)
 
+        logger.info("running final full-protocol evaluation...")
         final_metrics = self.evaluator.evaluate(self.model, compute_boundary_f=True)
         self._log({f"final/{k}": v for k, v in final_metrics.items() if k != "per_class_iou"}, step=total_iters)
+        logger.info(
+            f"training done in {gpu_hours:.2f} GPU-h — "
+            f"miou={final_metrics['miou']:.4f} rare_class_miou={final_metrics.get('rare_class_miou')}"
+        )
 
         return {
             "metrics": final_metrics,
