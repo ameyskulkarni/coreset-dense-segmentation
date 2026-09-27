@@ -8,7 +8,13 @@ wandb/
 .idea/
 
 # heavy, regenerable artifacts — everything needed to reproduce them is in git
-# (configs + results/runs.csv + results/subsets/*.json + results/rare_classes/*.json)
+# (configs + results/subsets/*.json + results/rare_classes/*.json)
 results/checkpoints/
 results/features/
 *.pt
+
+# scratch/working ledger + ad hoc exports (runs.csv, W&B exports, notes) — deliberately
+# NOT version-controlled: freely edited without needing a commit first. Each row already
+# self-describes its provenance via its own git_commit/config_hash columns, so this
+# folder not being tracked doesn't lose reproducibility.
+results/metrics/

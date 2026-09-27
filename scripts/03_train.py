@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 """Train one segmentation model on one subset with the frozen recipe (§4, §12.4, ADR 0001
 — docs/adr/0001-epoch-based-training.md). Runs a fast periodic eval during training and the
-full eval protocol at the end, then appends one row to results/runs.csv. Refuses to run on
-a dirty git tree unless --allow-dirty.
+full eval protocol at the end, then appends one row to results/metrics/runs.csv (gitignored
+— see .gitignore). Refuses to run on a dirty git tree unless --allow-dirty.
 
 Usage:
     python scripts/03_train.py --dataset ade20k --model segformer_b0 --recipe ade20k_proxy \\

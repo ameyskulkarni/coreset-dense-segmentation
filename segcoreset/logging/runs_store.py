@@ -2,6 +2,11 @@
 One row per finished run; never overwrite. `retention_vs_full_matched` is left blank at
 write time (it needs the matching full@matched-budget run to exist first) and is meant to
 be backfilled by a future aggregation script.
+
+Lives under `results/metrics/` (gitignored, see .gitignore) — deliberately NOT
+version-controlled, so it can be freely edited/annotated without needing a commit first.
+Each row is still independently traceable via its own git_commit/config_hash/wandb_url
+columns, so this doesn't cost any reproducibility.
 """
 from __future__ import annotations
 
@@ -20,7 +25,7 @@ RUNS_CSV_COLUMNS = [
     "notes",
 ]
 
-DEFAULT_RUNS_CSV = Path("results/runs.csv")
+DEFAULT_RUNS_CSV = Path("results/metrics/runs.csv")
 
 
 def append_run(row: dict, csv_path: Path | str = DEFAULT_RUNS_CSV) -> None:

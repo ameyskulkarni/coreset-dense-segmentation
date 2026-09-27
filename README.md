@@ -38,11 +38,14 @@ segcoreset/
   selection/         # common select() interface; random + full implemented, rest drop in as new files
   train/             # fixed-epoch Trainer (loss, LR schedule, AMP, checkpointing, W&B)
   eval/               # Evaluator (mIoU, rare-class mIoU, boundary F, pixel acc), sliding-window inference
-  logging/           # results/runs.csv ledger (append-only) + thin W&B wrapper
+  logging/           # results/metrics/runs.csv ledger (append-only) + thin W&B wrapper
   utils/             # config composition, seeding, git provenance
 scripts/             # one script per pipeline stage, see below
 results/
-  runs.csv           # append-only ledger, one row per finished run (§12.3 schema)
+  metrics/           # runs.csv (append-only ledger, §12.3 schema) + ad hoc exports —
+                     # gitignored on purpose: a mutable scratch/output area, edit freely
+                     # without needing a commit first; each row self-describes its own
+                     # provenance via git_commit/config_hash/wandb_url
   subsets/           # selected image-id lists (json), tracked in git — cheap, reproducibility-critical
   rare_classes/       # frozen bottom-K rare-class lists per dataset, tracked in git
   features/          # cached embeddings (gitignored — regenerate from configs)
