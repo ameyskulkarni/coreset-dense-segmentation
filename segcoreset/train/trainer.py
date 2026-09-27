@@ -84,11 +84,22 @@ class Trainer:
         self.evaluator = Evaluator(cfg.dataset, device=self.device)
 
     def _infinite_loader(self, dataset) -> Iterator[dict]:
+        # multiprocessing_context="spawn": the model is already moved to CUDA in __init__
+        # (before this loader's first batch is ever pulled), so by the time these workers
+        # are actually created the main process already has a live CUDA context and its
+        # background threads. Forking such a process (the Linux/PyTorch default) can
+        # intermittently deadlock — if a background thread holds an internal lock at the
+        # instant fork() runs, the forked worker inherits a permanently-locked copy with
+        # no thread able to release it. "spawn" starts workers as fresh interpreters
+        # instead of forking, avoiding this hazard entirely (standard fix for CUDA +
+        # multiprocessing DataLoader workers). Costs a bit of extra worker startup time
+        # (each re-imports the process); worth it for correctness on unattended runs.
         loader = DataLoader(
             dataset, batch_size=self.cfg.recipe.batch_size, shuffle=True,
             num_workers=self.cfg.recipe.num_workers, drop_last=True, pin_memory=True,
             persistent_workers=self.cfg.recipe.num_workers > 0,
             worker_init_fn=_seed_worker if self.cfg.recipe.num_workers > 0 else None,
+            multiprocessing_context="spawn" if self.cfg.recipe.num_workers > 0 else None,
         )
         while True:
             yield from loader
