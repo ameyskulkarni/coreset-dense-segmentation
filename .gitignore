@@ -18,3 +18,10 @@ results/features/
 # self-describes its provenance via its own git_commit/config_hash columns, so this
 # folder not being tracked doesn't lose reproducibility.
 results/metrics/
+
+# scratch experiment-launcher scripts (sweeps, calibration runs) — freely editable without
+# a commit first. These are convenience orchestration only; the actual hyperparameters used
+# by any given run are independently captured per-run (config.yaml + config_hash in
+# results/metrics/runs.csv), gated by the tracked recipe YAMLs, so this isn't load-bearing
+# for reproducibility the way scripts/ or segcoreset/ are.
+scripts/experiments/
