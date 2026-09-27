@@ -24,6 +24,12 @@
 # trustworthy — this script does NOT pass --allow-dirty on purpose); Cityscapes rare-class
 # list already computed (results/rare_classes/cityscapes.json).
 #
+# results/runs.csv changing after each run does NOT count as "dirty" (git_utils.is_dirty
+# excludes it — it's pure output, already self-describing via its own git_commit column),
+# so the LR-sweep runs below don't need a commit between them. The discriminativeness
+# loop's subset files DO get committed (one per seed) before their training run, since a
+# subset file is a real input, not an output.
+#
 # ~7 runs, ~1.3-1.5 GPU-h each -> roughly 9-11 GPU-hours end to end on one RTX 3090.
 
 set -euo pipefail
@@ -43,12 +49,18 @@ python scripts/03_train.py --dataset cityscapes --model segformer_b0 --recipe ci
 echo "=== 2/2: Discriminativeness check (random 10%, 3 seeds) ==="
 
 for seed in 0 1 2; do
+    subset="results/subsets/cityscapes_random_0.1_${seed}.json"
     python scripts/02_select.py --dataset cityscapes --selection random --ratio 0.1 --seed "$seed"
+    # New subset file is a real input (it decides what the run below trains on), so it's
+    # committed here rather than exempted from the dirty check like runs.csv is.
+    git add "$subset"
+    git commit -q -m "Add cityscapes random 10% subset, seed ${seed} (calibration script)"
     python scripts/03_train.py --dataset cityscapes --model segformer_b0 --recipe cityscapes_proxy \
-        --subset "results/subsets/cityscapes_random_0.1_${seed}.json" \
-        --run-name "cs_disccheck_random_r0.1_s${seed}"
+        --subset "$subset" --run-name "cs_disccheck_random_r0.1_s${seed}"
 done
 
 echo "=== Done ==="
 echo "Check results/runs.csv (or W&B) for: cs_lrsweep_lr3e-5_full_s0, cs_lrsweep_lr6e-5_full_s0,"
 echo "cs_lrsweep_lr1e-4_full_s0, cs_disccheck_random_r0.1_s{0,1,2}."
+echo "results/runs.csv itself is still uncommitted (by design, see header) — commit it once"
+echo "you're done reviewing all 7 rows: git add results/runs.csv && git commit -m '...'"
