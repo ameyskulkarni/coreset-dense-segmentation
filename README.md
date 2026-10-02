@@ -106,7 +106,7 @@ The recipe (LR, schedule, batch size, epoch cap) is tuned once on the full datas
 frozen — identical across every selection method, ratio, and seed, so subset *content* is
 the only variable (and, deliberately, the resulting wall-clock time — see the ADR). See
 `configs/recipe/cityscapes_proxy.yaml` / `ade20k_proxy.yaml` / `camvid_proxy.yaml` for the
-exact per-dataset values (AdamW, lr=6e-5, cosine decay with a short linear warmup, weight
+exact per-dataset values (AdamW, lr=1e-4 for Cityscapes (calibrated by LR sweep), poly decay with a short linear warmup, weight
 decay 0.01, AMP fp16). `Trainer` is the only place `epochs`/`warmup_epochs` get resolved to
 step counts, using the realized subset size — nothing else in the codebase reasons about
 iterations. Before running the full ladder, run the **discriminativeness check** (§4):

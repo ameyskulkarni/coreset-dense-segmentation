@@ -15,7 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from segcoreset.data.registry import build_dataset
-from segcoreset.selection.io import save_subset, subset_path
+from segcoreset.selection.io import load_subset, save_subset, subset_path
 from segcoreset.selection.registry import get_selector
 from segcoreset.utils.config import build_config
 from segcoreset.utils.logging_setup import setup_logging
@@ -28,6 +28,8 @@ def main():
     parser.add_argument("--selection", default=None)
     parser.add_argument("--ratio", type=float, default=None, help="fraction of train images to keep")
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--force", action="store_true",
+                        help="overwrite an existing subset file even if its image ids would change")
     parser.add_argument("--set", dest="overrides", nargs="*", default=[])
     args = parser.parse_args()
 
@@ -49,6 +51,13 @@ def main():
 
     ratio_for_name = 1.0 if cfg.selection.method == "full" else ratio
     out_path = subset_path(cfg.selection.method, cfg.dataset.name, ratio_for_name, args.seed)
+    if out_path.exists():
+        if load_subset(out_path) == chosen:
+            print(f"Subset unchanged, keeping existing file: {out_path}")
+            return
+        if not args.force:
+            raise SystemExit(f"Refusing to overwrite {out_path}: the selected image ids differ from the existing file "
+                             f"(selector/config changed?). Pass --force to overwrite deliberately.")
     save_subset(out_path, chosen, {
         "dataset": cfg.dataset.name, "method": cfg.selection.method,
         "ratio": ratio_for_name, "seed": args.seed, "n_images": len(chosen), "n_total": len(image_ids),
