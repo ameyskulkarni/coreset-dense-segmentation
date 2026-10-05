@@ -20,6 +20,11 @@ from segcoreset.utils.logging_setup import setup_logging
 
 
 def main():
+    """CLI entry point: compute, cache, and print the dataset's bottom-K rare classes.
+
+    `--k` defaults to the dataset config's `rare_class_k`; output goes to
+    `dataset.rare_classes_cache`.
+    """
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--dataset", required=True)
     parser.add_argument("--k", type=int, default=None, help="defaults to the dataset config's rare_class_k")

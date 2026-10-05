@@ -32,6 +32,18 @@ from segcoreset.utils.logging_setup import setup_logging
 
 
 def main():
+    """CLI entry point: train one model on one subset and append a row to `runs.csv`.
+
+    Checks the git tree is clean (unless `--allow-dirty`), builds the config, infers the
+    selection method and ratio from the subset filename (`<dataset>_<method>_<ratio>_<seed>`)
+    unless given explicitly, saves the resolved config to
+    `results/checkpoints/<run_name>/config.yaml`, starts W&B, trains, and records the final
+    metrics with full provenance.
+
+    Raises:
+        RuntimeError: If the git tree is dirty and `--allow-dirty` was not passed.
+        ValueError: If dataset/model/recipe config is missing.
+    """
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--experiment", default=None)
     parser.add_argument("--dataset", default=None)

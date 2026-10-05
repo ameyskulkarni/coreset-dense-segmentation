@@ -9,4 +9,12 @@ import torch.nn as nn
 
 class SegmentationModel(nn.Module):
     def forward(self, pixel_values):
+        """Predict per-pixel class logits.
+
+        Args:
+            pixel_values: Normalized images, `[B, 3, H, W]`.
+
+        Returns:
+            Logits `[B, num_classes, H, W]` at the SAME spatial size as the input.
+        """
         raise NotImplementedError

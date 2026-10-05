@@ -15,6 +15,23 @@ from .registry import build_dataset
 
 
 def compute_and_cache_rare_classes(dataset_cfg, k: int, cache_path: Path | str | None = None) -> dict:
+    """Rank classes by labeled-pixel count over the FULL train split and freeze the rarest `k`.
+
+    Reads label PNGs directly (no image loading or transforms), counts pixels per encoded
+    class (ignoring `ignore_index`), and writes the result as JSON. Labels are used here for
+    analysis only — the output feeds rare-class mIoU in evaluation, never selection.
+
+    Args:
+        dataset_cfg: The resolved `dataset:` sub-config (needs `name`, `train_split`, and
+            `rare_classes_cache` unless `cache_path` is given).
+        k: Number of rarest classes to keep.
+        cache_path: Output JSON path; defaults to `dataset_cfg.rare_classes_cache`.
+
+    Returns:
+        The dict written to disk: `dataset`, `k`, `rare_class_ids` (rarest first),
+        `rare_class_names` (or `None` if the dataset has no `class_names`), and per-class
+        `pixel_counts` / `pixel_freq` (indexed by class id).
+    """
     ds = build_dataset(dataset_cfg, split=dataset_cfg.train_split)
     counts = np.zeros(ds.num_classes, dtype=np.int64)
     for s in tqdm(ds.samples, desc=f"counting pixels [{dataset_cfg.name}]"):
@@ -44,5 +61,13 @@ def compute_and_cache_rare_classes(dataset_cfg, k: int, cache_path: Path | str |
 
 
 def load_rare_classes(cache_path: Path | str) -> list[int]:
+    """Load the frozen rare-class ids written by `compute_and_cache_rare_classes`.
+
+    Args:
+        cache_path: Path to `results/rare_classes/<dataset>.json`.
+
+    Returns:
+        The rare class ids, rarest first.
+    """
     with open(cache_path) as f:
         return json.load(f)["rare_class_ids"]

@@ -28,6 +28,18 @@ _GROUPS = ("dataset", "model", "recipe", "selection", "features")
 
 
 def _load_group(group: str, name: str) -> DictConfig:
+    """Load one named YAML fragment from `configs/<group>/<name>.yaml`.
+
+    Args:
+        group: Config group directory, one of `_GROUPS` (e.g. `"dataset"`, `"recipe"`).
+        name: Fragment basename without the `.yaml` suffix (e.g. `"cityscapes"`).
+
+    Returns:
+        The fragment as an (unresolved) `DictConfig`.
+
+    Raises:
+        FileNotFoundError: If no such fragment exists in that group.
+    """
     path = CONFIGS_DIR / group / f"{name}.yaml"
     if not path.exists():
         raise FileNotFoundError(f"No config named '{name}' in group '{group}' (looked at {path})")
@@ -35,9 +47,29 @@ def _load_group(group: str, name: str) -> DictConfig:
 
 
 def build_config(experiment: str | None = None, overrides: Sequence[str] = (), **group_names: str | None) -> DictConfig:
-    """Build a fully resolved run config. `group_names` keys must be one of `_GROUPS`
-    (e.g. `dataset="cityscapes"`); `None` values are ignored so scripts can pass every
-    CLI flag unconditionally."""
+    """Build a fully resolved run config from the three composable sources.
+
+    Sources are merged in increasing precedence: the `experiment` YAML (its group-name
+    entries are expanded to the named fragments first, then its remaining fields are merged
+    on top), then each explicit `group_names` fragment, then the `overrides` dotlist. Each
+    group's fragment lands under its own top-level key (`cfg.dataset`, `cfg.recipe`, ...).
+
+    Args:
+        experiment: Path to an experiment YAML, or the bare name of one under
+            `configs/experiment/`. Group keys holding a string (e.g. `dataset: cityscapes`)
+            are treated as fragment names; every other key is merged in as a direct field.
+        overrides: OmegaConf dotlist entries (`"recipe.lr=1e-4"`), applied last.
+        **group_names: Fragment name per group, keyed by group (e.g. `dataset="cityscapes"`).
+            `None` values are ignored so scripts can pass every CLI flag unconditionally.
+
+    Returns:
+        The merged `DictConfig`. Groups that no source mentioned are simply absent, so
+        callers check e.g. `"dataset" in cfg` to validate what they need.
+
+    Raises:
+        ValueError: If a `group_names` key is not one of `_GROUPS`.
+        FileNotFoundError: If a named fragment does not exist.
+    """
     cfg = OmegaConf.create({})
 
     if experiment is not None:
@@ -65,11 +97,31 @@ def build_config(experiment: str | None = None, overrides: Sequence[str] = (), *
 
 
 def config_hash(cfg: DictConfig) -> str:
-    """Short, stable hash of the fully resolved config — provenance for `runs.csv` (§12.3)."""
+    """Short, stable hash of the fully resolved config — provenance for `runs.csv` (§12.3).
+
+    The config is resolved (interpolations expanded), serialized as key-sorted JSON, and
+    SHA-256 hashed, so two configs hash equal iff their resolved contents are equal,
+    regardless of which input method (fragments / experiment / `--set`) produced them.
+
+    Args:
+        cfg: The resolved run config.
+
+    Returns:
+        The first 12 hex characters of the SHA-256 digest.
+    """
     payload = json.dumps(OmegaConf.to_container(cfg, resolve=True), sort_keys=True, default=str)
     return hashlib.sha256(payload.encode()).hexdigest()[:12]
 
 
 def save_resolved_config(cfg: DictConfig, path: Path) -> None:
+    """Write `cfg` to `path` as YAML, creating parent directories as needed.
+
+    `03_train.py` saves this next to the checkpoints as `config.yaml`; `04_eval.py` reloads it
+    to rebuild the exact model/dataset config for standalone re-scoring.
+
+    Args:
+        cfg: The config to save.
+        path: Destination YAML file.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     OmegaConf.save(cfg, path)

@@ -23,6 +23,17 @@ _IMAGENET_STD = (0.229, 0.224, 0.225)
 
 class DinoExtractor(FeatureExtractor):
     def __init__(self, cfg):
+        """Load a DINOv2 (torch.hub) or DINOv3 (HF transformers) ViT and its preprocessing.
+
+        Args:
+            cfg: The resolved `features:` sub-config. Needs `source` (`torch_hub` or `hf`),
+                `model_name`, `patch_size`, `image_size`, and `hub_repo` for torch.hub;
+                optional `outputs` (default `["cls", "patch"]`).
+
+        Raises:
+            ValueError: If `image_size` is not a multiple of `patch_size`, or `source` is
+                unknown.
+        """
         super().__init__(cfg)
         self.outputs = list(cfg.get("outputs", ["cls", "patch"]))
         self.patch_size = cfg.patch_size
@@ -49,10 +60,35 @@ class DinoExtractor(FeatureExtractor):
         ])
 
     def preprocess(self, image: Image.Image) -> torch.Tensor:
+        """Bicubic-resize to a square `image_size`, convert to tensor, ImageNet-normalize.
+
+        The square resize ignores aspect ratio so every image yields the same patch grid.
+
+        Args:
+            image: PIL image.
+
+        Returns:
+            `[3, image_size, image_size]` float tensor.
+        """
         return self._transform(image.convert("RGB"))
 
     @torch.no_grad()
     def extract_batch(self, batch: torch.Tensor) -> dict[str, torch.Tensor]:
+        """Extract the normalized CLS token and/or the patch-token grid.
+
+        For torch.hub DINOv2 the final-layer-normed tokens (`x_norm_clstoken`,
+        `x_norm_patchtokens`) are used. For HF DINOv3 the CLS token is position 0 of
+        `last_hidden_state` and the patch tokens follow the register tokens. Patch tokens are
+        reshaped to a square grid (falling back to the configured grid if the token count is not
+        a perfect square).
+
+        Args:
+            batch: `[B, 3, image_size, image_size]` stack of `preprocess` outputs.
+
+        Returns:
+            A dict restricted to `self.outputs`: `"cls"` `[B, D]` and/or `"patch"`
+            `[B, grid, grid, D]`, each L2-normalized along D, on CPU.
+        """
         batch = batch.to(self.device)
         if self._source == "torch_hub":
             feats = self.model.forward_features(batch)

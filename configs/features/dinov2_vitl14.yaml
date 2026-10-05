@@ -1,0 +1,12 @@
+# DINOv2 ViT-Large/14 (1024-dim) — same extraction recipe as dinov2_vits14, wider model.
+# Patch tokens are ~5 MB/image in fp32, so budget disk accordingly
+# (cls-only: set `outputs: [cls]`). Downloaded via torch.hub on first use.
+name: dinov2_vitl14
+backend: dinov2
+model_name: dinov2_vitl14
+source: torch_hub
+hub_repo: facebookresearch/dinov2
+patch_size: 14
+outputs: [cls, patch]
+image_size: 518 # multiple of patch_size (14 * 37)
+batch_size: 16

@@ -1,5 +1,6 @@
-# Default representation (§6 `dinov2_cls` / `dinov2_patch`) — global-embedding baselines
-# and the `patch_coverage` method both read from here. ViT-S/14 for speed, per the plan.
+# DINOv2 ViT-S/14 (384-dim) — smallest variant, the plan's original §6 choice. The project
+# default is now dinov2_vitb14 (see 00_extract_features.py); `patch_coverage` and the
+# global-embedding baselines read from whichever features config you extract.
 # Downloaded automatically via torch.hub on first use (facebookresearch/dinov2).
 name: dinov2_vits14
 backend: dinov2

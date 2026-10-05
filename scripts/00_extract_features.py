@@ -4,8 +4,8 @@ other representation-study arms (rn50_sup, segb0_enc, clip_cls). Resumable — a
 image ids are skipped.
 
 Usage:
-    python scripts/00_extract_features.py --dataset ade20k --features dinov2_vits14 --split train
-    python scripts/00_extract_features.py --experiment configs/experiment/example_ade20k_random20.yaml --features dinov2_vits14
+    python scripts/00_extract_features.py --dataset ade20k --features dinov2_vitb14 --split train
+    python scripts/00_extract_features.py --experiment configs/experiment/example_ade20k_random20.yaml --features dinov2_vitb14
 """
 from __future__ import annotations
 
@@ -26,26 +26,51 @@ from segcoreset.utils.config import build_config
 from segcoreset.utils.logging_setup import setup_logging
 
 
+DEFAULT_FEATURES = "dinov2_vitb14"
+
+
 class _ImageOnlyDataset(Dataset):
     """Loads only images (no labels) for extraction speed at ADE20K/Cityscapes scale."""
 
     def __init__(self, samples, preprocess):
+        """Wrap samples for label-free, preprocessed image loading.
+
+        Args:
+            samples: `Sample`s to load (typically only the not-yet-cached ones).
+            preprocess: The extractor's `preprocess` (PIL image -> tensor).
+        """
         self.samples = samples
         self.preprocess = preprocess
 
     def __len__(self):
+        """Return the number of samples to extract."""
         return len(self.samples)
 
     def __getitem__(self, idx):
+        """Load sample `idx` as RGB and preprocess it.
+
+        Returns:
+            `(preprocessed image tensor, image_id)`.
+        """
         s = self.samples[idx]
         return self.preprocess(Image.open(s.image_path).convert("RGB")), s.image_id
 
 
 def main():
+    """CLI entry point: extract features for every not-yet-cached image in one split.
+
+    Builds the dataset and extractor from config (defaulting `--features` to
+    `DEFAULT_FEATURES` if neither the CLI nor the experiment names one), saves one `.pt` per
+    image under `results/features/<dataset>/<features>/<split>/`, then rewrites `index.json`
+    with every image id and an id -> source-path map.
+
+    Raises:
+        ValueError: If no dataset or features config could be resolved.
+    """
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--experiment", default=None)
     parser.add_argument("--dataset", default=None)
-    parser.add_argument("--features", default=None, help="representation config name, e.g. dinov2_vits14")
+    parser.add_argument("--features", default=None, help="representation config name, e.g. dinov2_vitb14 (default)")
     parser.add_argument("--split", default="train", choices=["train", "val"])
     parser.add_argument("--num-workers", type=int, default=8)
     parser.add_argument("--set", dest="overrides", nargs="*", default=[])
@@ -53,6 +78,8 @@ def main():
 
     setup_logging()
     cfg = build_config(experiment=args.experiment, dataset=args.dataset, features=args.features, overrides=args.overrides)
+    if "features" not in cfg and args.features is None:
+        cfg = build_config(experiment=args.experiment, dataset=args.dataset, features=DEFAULT_FEATURES, overrides=args.overrides)
     if "dataset" not in cfg or "features" not in cfg:
         raise ValueError("Need both a --dataset and a --features config (directly or via --experiment).")
 
@@ -77,7 +104,10 @@ def main():
                 store.save(image_id, {k: v[i] for k, v in feats.items()})
 
     all_ids = [s.image_id for s in ds.samples]
-    store.write_index(all_ids, {"dataset": cfg.dataset.name, "representation": cfg.features.name, "split": args.split})
+    store.write_index(all_ids, {
+        "dataset": cfg.dataset.name, "representation": cfg.features.name, "split": args.split,
+        "image_paths": {s.image_id: str(s.image_path) for s in ds.samples},  # id -> source image
+    })
     print(f"Done. {len(all_ids)} images cached at {out_dir}")
 
 

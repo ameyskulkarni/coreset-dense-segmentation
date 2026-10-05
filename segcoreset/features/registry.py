@@ -16,6 +16,19 @@ FEATURE_REGISTRY = {
 
 
 def build_extractor(features_cfg):
+    """Instantiate the extractor registered under `features_cfg.backend`.
+
+    Constructing an extractor loads (and on first use downloads) its pretrained weights.
+
+    Args:
+        features_cfg: The resolved `features:` sub-config.
+
+    Returns:
+        A `FeatureExtractor` with its model on the selected device.
+
+    Raises:
+        ValueError: If `features_cfg.backend` is not in `FEATURE_REGISTRY`.
+    """
     backend = features_cfg.backend
     if backend not in FEATURE_REGISTRY:
         raise ValueError(f"Unknown feature backend '{backend}'. Available: {list(FEATURE_REGISTRY)}")

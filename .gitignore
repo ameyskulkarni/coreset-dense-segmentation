@@ -11,6 +11,8 @@ wandb/
 # (configs + results/subsets/*.json + results/rare_classes/*.json)
 results/checkpoints/
 results/features/
+# per-image score dumps from scripts/02b_inspect_prototypicality.py — debugging output, regenerable
+results/selection_debug/
 *.pt
 
 # scratch/working ledger + ad hoc exports (runs.csv, W&B exports, notes) — deliberately

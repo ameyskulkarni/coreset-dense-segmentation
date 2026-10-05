@@ -26,6 +26,22 @@ class SegmentationDataset(Dataset):
     ignore_index: int = 255
 
     def __init__(self, cfg, split: str, subset_ids: Sequence[str] | None = None, transform: Callable | None = None):
+        """Discover the split's samples and optionally restrict them to a subset.
+
+        Args:
+            cfg: The resolved `dataset:` sub-config (needs at least `root`).
+            split: Split name as it appears on disk (e.g. `"train"`, `"val"`, `"training"`).
+            subset_ids: Image ids to keep (from a `results/subsets/*.json` file); duplicates
+                are collapsed. Samples follow set-iteration order, which varies between
+                processes (string hash seed), so same-seed runs on a subset are not
+                batch-for-batch identical — accepted; seed-averaging absorbs it. `None` keeps
+                every sample in the split, in sorted path order.
+            transform: Joint `(PIL image, label ndarray) -> (image, label)` callable applied in
+                `__getitem__` (see `data/transforms.py`). `None` returns raw PIL/ndarray pairs.
+
+        Raises:
+            ValueError: If any `subset_ids` entry is not an image id in this split.
+        """
         self.cfg = cfg
         self.split = split
         self.transform = transform
@@ -43,20 +59,53 @@ class SegmentationDataset(Dataset):
         self.samples: list[Sample] = samples
 
     def _list_samples(self, split: str) -> list[Sample]:
+        """Discover every (image, label) pair for `split` on disk. Implemented by subclasses.
+
+        Args:
+            split: Split name as it appears on disk.
+
+        Returns:
+            One `Sample` per image, in a deterministic (sorted) order.
+
+        Raises:
+            FileNotFoundError: (in subclasses) If the split directory does not exist.
+        """
         raise NotImplementedError
 
     def _encode_label(self, raw: np.ndarray) -> np.ndarray:
         """Map raw label-PNG pixel values to contiguous ids in [0, num_classes), with
-        `ignore_index` everywhere else."""
+        `ignore_index` everywhere else. Implemented by subclasses.
+
+        Args:
+            raw: The label PNG as an integer `[H, W]` array.
+
+        Returns:
+            A `[H, W]` uint8 array of train ids / `ignore_index`.
+        """
         raise NotImplementedError
 
     def image_ids(self) -> list[str]:
+        """Return the image ids of this dataset's samples, in sample order.
+
+        This is the candidate pool that selectors choose from and that subset files refer to.
+        """
         return [s.image_id for s in self.samples]
 
     def __len__(self) -> int:
+        """Return the number of samples (after any subset filtering)."""
         return len(self.samples)
 
     def __getitem__(self, idx: int):
+        """Load, encode, and transform one sample.
+
+        Args:
+            idx: Index into `self.samples`.
+
+        Returns:
+            A dict with `"image"` (RGB PIL image, or a normalized `[3, H, W]` float tensor once
+            `transform` includes `Normalize`), `"label"` (encoded `[H, W]` ndarray, or a long
+            tensor after `Normalize`), and `"image_id"` (str).
+        """
         s = self.samples[idx]
         image = Image.open(s.image_path).convert("RGB")
         label = self._encode_label(np.array(Image.open(s.label_path)))
