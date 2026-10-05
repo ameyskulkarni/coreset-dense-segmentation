@@ -1,5 +1,8 @@
-# The frozen proxy training recipe (§4, ADR 0001) for ADE20K method comparisons. Same
-# LR/schedule/optimizer as cityscapes_proxy — only `epochs` differs, because ADE20K's
+# The proxy training recipe (§4, ADR 0001) for ADE20K method comparisons. Same
+# schedule/optimizer as cityscapes_proxy, but NOT the same LR: Cityscapes was swept to 1e-4
+# (ADR 0001 Amendment 3); 6e-5 here is the SegFormer literature default and has NOT been
+# swept for ADE20K — run an LR sweep + discriminativeness check before reporting results.
+# `epochs` differs because ADE20K's
 # full train set (20,210 imgs) is ~7x larger than Cityscapes' (2,975), so the SAME epoch
 # count would mean ~7x more compute per run. 8 epochs (20210/8=2526 steps/epoch) is
 # ~20,210 steps, matching the pre-ADR 20,000-iteration budget almost exactly.

@@ -15,7 +15,7 @@ pip install -e .
 ```
 
 Uses the conda env `coreset-dense-segmentation` (torch cu121, RTX 3090). First run of any
-script downloads pretrained weights (SegFormer-B0 encoder, DINOv2 ViT-S/14, ResNet-50,
+script downloads pretrained weights (SegFormer-B0 encoder, DINOv2 ViT-B/14, ResNet-50,
 ...) from HuggingFace Hub / torch.hub — needs internet once, then everything is cached
 locally.
 

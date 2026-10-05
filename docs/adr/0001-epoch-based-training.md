@@ -1,9 +1,17 @@
-# ADR 0001: Fixed-epoch training, not fixed-iteration; cosine LR schedule
+# ADR 0001: Fixed-epoch training, not fixed-iteration; poly LR schedule
 
-**Status:** Accepted (2026-09-21)
+**Status:** Accepted (2026-09-21), amended three times (see the amendments at the end).
+
+> **Current state (read this first; the sections below are kept as history).**
+> The frozen Cityscapes recipe used by every reported run is `configs/recipe/cityscapes_proxy.yaml`:
+> **100 epochs** (37,100 steps on full data), **6 warmup epochs**, AdamW, **lr 1e-4**,
+> weight decay 0.01, **poly** schedule (power 1.0, linear decay to 0), batch 8, AMP fp16.
+> ADE20K (`ade20k_proxy`, 8 epochs) and CamVid (`camvid_proxy`, 300 epochs) still use the
+> calibrated-table epoch counts and an *uncalibrated* lr 6e-5. The Decision section's
+> 50-epoch / cosine / 6e-5 values for Cityscapes are **superseded** — see Amendments 2 and 3.
 **Supersedes:** the "Fix iterations, NOT epochs" rule in
-`segmentation-coreset-experiment-plan.md` §4 (original version), and the poly
-LR schedule in `configs/recipe/*.yaml`.
+`segmentation-coreset-experiment-plan.md` §4 (original version), and (temporarily) the
+poly LR schedule in `configs/recipe/*.yaml` — poly was restored by Amendment 2.
 
 ## Context
 
@@ -147,8 +155,9 @@ the absolute step counts shrink with the subset.
 ## Open question (carried forward, not resolved here)
 
 At extreme low ratios (5%), fixed-epoch training could leave very few
-absolute gradient steps (e.g. Cityscapes 5% ≈ 149 images → ~18 steps/epoch ×
-50 epochs ≈ 900 steps total) — potentially too few to leave warmup and reach a
+absolute gradient steps (e.g. Cityscapes 5% ≈ 149 images → 18 steps/epoch ×
+100 epochs = 1,800 steps total under the current recipe; the original estimate here was
+~900 steps at 50 epochs) — potentially too few to leave warmup and reach a
 non-degenerate mIoU, which would look like "random collapses at 5%" for
 reasons that are actually just undertraining, not a real coreset-selection
 finding. The discriminativeness check (§4) is the intended detector for this;
@@ -208,6 +217,29 @@ schedule to `cosine`. Both are reverted here:
 Net effect: this amendment returns the recipe to the original Decision section's numbers,
 with the fixed-epoch (not fixed-iteration) convention as the one part of ADR 0001 that
 was never in question and remains unchanged throughout.
+
+## Amendment 3 (recorded 2026-10-05): Cityscapes raised to 100 epochs, 6 warmup epochs, lr 1e-4
+
+Amendment 2 left `cityscapes_proxy.yaml` at 50 epochs / 3 warmup epochs / lr 6e-5. Before
+any reported run, two measured changes were made to the Cityscapes recipe only:
+
+- **`epochs: 50 -> 100`, `warmup_epochs: 3 -> 6`** (warmup stays 6% of the schedule).
+  100 epochs on full Cityscapes is 37,100 steps, measured at ~1.3 GPU-hours of training on
+  one RTX 3090 — inside the plan's ~2.5 h per-run envelope, so the longer budget costs
+  nothing the hardware constraint forbids. Validated with `--set recipe.epochs=100` before
+  being frozen in the YAML.
+- **`lr: 6e-5 -> 1e-4`**, from the full-data LR sweep (plan §9; 100 epochs, seed 0):
+  3e-5 -> 68.78 mIoU, 6e-5 -> 71.43, 1e-4 -> 72.78 (rows `cs_lrsweep_lr*_full_s0` in
+  `results/metrics/runs.csv`). The discriminativeness check was then re-run at lr 1e-4
+  (`cs_disccheck_random_r0.1_s*_lr1e-4`: 52.7 / 54.8 / 51.2 mIoU vs 72.8 full) and passed.
+
+The schedule stays `poly`. `ade20k_proxy.yaml` and `camvid_proxy.yaml` were **not**
+changed: they keep their calibrated-table epoch counts and lr 6e-5, which has not been
+swept for those datasets. Each needs its own LR sweep and discriminativeness check before
+it is used for reported results.
+
+Every Cityscapes number in `docs/results.md` (random baseline, 2026-09-28 onward) was
+produced with this recipe.
 
 ## Alternatives considered
 

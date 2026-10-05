@@ -84,21 +84,23 @@ Every training run uses the **same** recipe; the **only** variable is which imag
 |---|---|---|---|
 | Crop | 512×1024 | 480×480 | 512×512 |
 | Batch size | 8 | 16 | 8 |
-| Epochs (fixed cap) | **50** (160 for the one "ceiling" run) | 300 | 8 (16 for the one "ceiling" run) |
-| Warmup | 3 epochs | 15 epochs | 1 epoch |
+| Epochs (fixed cap) | **100** = 37,100 steps on full data (160 for the one "ceiling" run) | 300 | 8 (16 for the one "ceiling" run) |
+| Warmup | 6 epochs | 15 epochs | 1 epoch |
 | Optimizer | AdamW | AdamW | AdamW |
-| LR | 6e-5 | 6e-5 | 6e-5 |
+| LR | **1e-4** (LR sweep on full data, see `cityscapes_proxy.yaml`) | 6e-5 (not yet calibrated) | 6e-5 (not yet calibrated) |
 | LR schedule | poly (power 1.0, linear decay to 0) + linear warmup | same | same |
 | Weight decay | 0.01 | 0.01 | 0.01 |
 | Precision | AMP fp16 | AMP fp16 | AMP fp16 |
-| Est. wall-time/run (full data) | ~1.0–1.5 h | ~10–20 min | ~1.0–1.5 h |
+| Est. wall-time/run (full data) | 1.27 h training (measured, 3 seeds) + ~0.3 h final eval | ~10–20 min | ~1.0–1.5 h |
 | Est. VRAM (batch 8, crop 512×1024) | ~4.7 GB allocated / ~6.6 GB reserved (measured) | — | — |
 
 Epoch counts are per-dataset (not a single number for every dataset) — ADE20K's full
 dataset is ~7x Cityscapes', so the same epoch count would cost ~7x more compute there;
 each dataset's count was calibrated to land close to the wall-clock this project's
 hardware constraint (one 3090, no run over ~2.5h) already implied under the old
-iteration-based budgets. Schedule is `poly` (power 1.0 — a straight line, same
+iteration-based budgets. Cityscapes was later raised from 50 to 100 epochs and its LR
+from 6e-5 to 1e-4 after measurement and an LR sweep (ADR 0001, Amendment 3); the
+Cityscapes column above is the frozen recipe actually used for every reported run. Schedule is `poly` (power 1.0 — a straight line, same
 complexity as `cosine`), matching the SegFormer/mmseg literature-standard fine-tuning
 recipe (ADR 0001, amendment 2) rather than a "fancy" choice; `cosine`/`constant` remain
 available as documented alternatives.
@@ -177,13 +179,13 @@ The **label-free, one-shot constraint disqualifies the entire score/difficulty f
 
 | ID | Model | Output used | Role |
 |---|---|---|---|
-| `dinov2_cls` | DINOv2 ViT-S/14 (`torch.hub`) | global CLS vector | global-embedding baselines |
-| `dinov2_patch` | DINOv2 ViT-S/14 | patch token grid | your method + patch study |
+| `dinov2_cls` | DINOv2 ViT-B/14 (`torch.hub`) | global CLS vector | global-embedding baselines |
+| `dinov2_patch` | DINOv2 ViT-B/14 | patch token grid | your method + patch study |
 | `rn50_sup` | ImageNet-supervised ResNet-50 | global pooled feat | classification-representation arm of Contribution 3 |
 | `segb0_enc` | SegFormer-B0 encoder (ImageNet or short full-data trained) | pooled encoder feat | segmentation-representation arm |
 | `clip_cls` *(optional)* | CLIP ViT-B/32 | global | extra representation point |
 
-Use **ViT-S/14** (small) for speed. Extraction = one forward pass/image; cache to `.npy`/`.pt` keyed by image id. Full-corpus extraction: minutes (CamVid/Cityscapes), <1 h (ADE20K).
+**ViT-B/14** (`configs/features/dinov2_vitb14.yaml`, 518×518 input, 768-dim) is the project default and is what every committed prototypicality subset uses; ViT-S/14 (the original choice) and ViT-L/14 remain available as configs. Extraction = one forward pass/image; cache to `.npy`/`.pt` keyed by image id. Full-corpus extraction: minutes (CamVid/Cityscapes), <1 h (ADE20K).
 
 ---
 
@@ -223,7 +225,7 @@ Use **ViT-S/14** (small) for speed. Extraction = one forward pass/image; cache t
 ## 9. Hyperparameter policy (avoid combinatorial explosion)
 
 **Two hard rules:**
-1. **Tune the training recipe ONCE, on the FULL dataset only.** Small LR sweep `{3e-5, 6e-5, 1e-4}` + set the epoch cap by the discriminativeness check (§4, ADR 0001). LR schedule is restricted to `constant` or `cosine` (with linear warmup) — no poly/step/exponential variants; see the ADR for why and which to use. **Freeze it. Reuse identically for every subset and every method.** Never per-method tune the trainer — that's both unfair and budget-fatal.
+1. **Tune the training recipe ONCE, on the FULL dataset only.** Small LR sweep `{3e-5, 6e-5, 1e-4}` + set the epoch cap by the discriminativeness check (§4, ADR 0001). LR schedule is `poly` (power 1.0, linear decay to 0) with linear warmup — the SegFormer/mmseg standard; `cosine`/`constant` exist only as documented fallbacks, no step/exponential variants (ADR 0001, Amendment 2). **Freeze it. Reuse identically for every subset and every method.** Never per-method tune the trainer — that's both unfair and budget-fatal.
 2. **Selection-method hyperparameters set by cheap proxies, not by retraining.** k-means K, dedup threshold τ, prototypicality direction: pick by a **label-free proxy** (embedding-space coverage / silhouette / rare-pseudo-class recall) measured *without* training a segmenter. Only the final chosen setting gets trained. Report the proxy→final mapping so it's principled, not hand-tuned.
 
 This keeps total training runs ≈ (methods × ratios × seeds) + references, with **no** hyperparameter grid multiplying it.
@@ -236,7 +238,7 @@ This keeps total training runs ≈ (methods × ratios × seeds) + references, wi
 Purpose: shake out feature-extract → select → train → eval → log loop. Run `random`, `prototypicality`, `patch_coverage` at 10/20%. ~10 runs × ~20 min. Discard numbers scientifically; keep the code and the discriminativeness check.
 
 ### Stage 1 — Kill-shot on Cityscapes (the go/no-go)
-Compare `random` (3 seeds), `prototypicality`, `kcenter`, `semdedup`, `bpp`, and **`zcore`** at 10/20/30% + `full@20k` + `full@60k`. (`zcore` is the direct global-coverage foil — see §5.1a. It belongs in Stage 1 so the "global vs dense coverage" contrast is visible from the first result, not bolted on later.)
+Compare `random` (3 seeds), `prototypicality`, `kcenter`, `semdedup`, `bpp`, and **`zcore`** at 10/20/30% + full data @ the proxy budget (`cityscapes_proxy`, 100 epochs) + full data @ the ceiling budget (`cityscapes_ceiling`, 160 epochs). (`zcore` is the direct global-coverage foil — see §5.1a. It belongs in Stage 1 so the "global vs dense coverage" contrast is visible from the first result, not bolted on later.)
 **Gate:** report overall mIoU **and rare-class mIoU**.
 - If global-embedding selection **hurts rare-class IoU** vs random (even if overall ties) → Contribution 1 confirmed → proceed to full plan.
 - If everything (incl. rare classes) sits inside random's band → **pivot**: drop the method, write the honest-benchmark + representation-study paper (Contribution 3 + reality-check), or move to the cold-start AL framing.
@@ -387,7 +389,7 @@ python scripts/06_plots.py --dataset cityscapes      # -> figures
 |---|---|---|
 | Random unbeatable overall | Stage 1 | **Not a pivot — this is an anticipated outcome.** Ship the §14b no-method paper (Contributions 1–3 + mechanism). |
 | No rare-class collapse at all | Stage 1 | mechanism becomes "why selection is neutral for segmentation"; still a §14b characterization paper via Contribution 3 + a different mechanism |
-| Recipe non-discriminative | Day-1 check | raise iters to 30–40k, re-freeze |
+| Recipe non-discriminative | Day-1 check | raise `epochs`, re-freeze |
 | Encoder leakage (select+train same backbone inflates) | Stage 2 cross-representation | report cross-representation numbers as the honest result |
 | Segmentation resists pruning below ~20% | Stage 1 curve | headline at 20–30%, discuss the floor honestly |
 | Compute overrun | budget tracker | run lean core, 2 seeds, drop 5%/50% first pass |
