@@ -24,6 +24,18 @@ class CamVidDataset(SegmentationDataset):
     class_names = CLASS_NAMES
 
     def _list_samples(self, split: str) -> list[Sample]:
+        """List `<split>/*.png` paired with the same filename under `<split>annot/`.
+
+        Args:
+            split: `"train"`, `"val"`, or `"test"`.
+
+        Returns:
+            One `Sample` per image, sorted by filename; `image_id` is the filename stem.
+
+        Raises:
+            KeyError: If `split` is not one of the three known splits.
+            FileNotFoundError: If the split's image directory does not exist.
+        """
         root = Path(self.cfg.root)
         img_sub, lbl_sub = _SPLIT_DIRS[split]
         img_dir, lbl_dir = root / img_sub, root / lbl_sub
@@ -35,6 +47,14 @@ class CamVidDataset(SegmentationDataset):
         return samples
 
     def _encode_label(self, raw: np.ndarray) -> np.ndarray:
+        """Keep class values 0-10 as-is and map anything >= `num_classes` (void = 11) to 255.
+
+        Args:
+            raw: Raw annotation PNG values, `[H, W]`.
+
+        Returns:
+            `[H, W]` uint8 train ids.
+        """
         label = raw.copy()
         label[label >= self.num_classes] = 255
         return label.astype(np.uint8)

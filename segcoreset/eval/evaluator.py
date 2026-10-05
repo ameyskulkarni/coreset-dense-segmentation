@@ -20,6 +20,16 @@ from .sliding_window import sliding_window_inference
 
 class Evaluator:
     def __init__(self, dataset_cfg, device: torch.device | None = None):
+        """Bind the evaluator to a dataset config and load the frozen rare-class list if present.
+
+        Args:
+            dataset_cfg: The resolved `dataset:` sub-config (needs `rare_classes_cache`,
+                `val_split`, `num_classes`, `ignore_index`, `crop_size`, and an `eval:` block).
+            device: Device to run the model on; defaults to CUDA if available, else CPU.
+
+        If `dataset_cfg.rare_classes_cache` does not exist yet (`01_compute_rare_classes.py` has
+        not been run), `rare_class_ids` is empty and `rare_class_miou` is silently omitted.
+        """
         self.cfg = dataset_cfg
         self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
         rare_path = Path(dataset_cfg.rare_classes_cache)
@@ -29,6 +39,30 @@ class Evaluator:
     def evaluate(self, model, split: str | None = None, subset_ids=None, max_images: int | None = None,
                  compute_boundary_f: bool = True, mode: str | None = None,
                  resize_short_side: int | None = None) -> dict:
+        """Run the model over a split and compute all metrics in a single pass.
+
+        Images are evaluated one at a time at native resolution (batch size 1). The model is
+        switched to eval mode and left there — callers that resume training must call
+        `model.train()` themselves.
+
+        Args:
+            model: A `SegmentationModel` already on `self.device`.
+            split: On-disk split to evaluate; defaults to `dataset_cfg.val_split`.
+            subset_ids: Optional image ids to restrict evaluation to.
+            max_images: If set and smaller than the split, evaluate a fixed random subsample
+                of this many images (seed 0, so the same images every call — keeps periodic
+                mid-training eval a consistent trend line).
+            compute_boundary_f: Whether to compute the (relatively slow) boundary F-score.
+            mode: `"sliding_window"` or `"whole_image"`; defaults to `dataset_cfg.eval.mode`.
+            resize_short_side: Whole-image mode only — resize so the short side equals this
+                before inference, then upsample logits back to the label size. `None` falls back
+                to `dataset_cfg.eval.resize_short_side`; if that is also unset, no resize.
+
+        Returns:
+            A dict with `miou`, `pixel_acc`, `per_class_iou` (`{class_id: iou or None}`, `None`
+            for classes absent from both prediction and ground truth), plus `rare_class_miou`
+            when a rare-class list is loaded and `boundary_f` when `compute_boundary_f` is set.
+        """
         model.eval()
         split = split or self.cfg.val_split
         ds = build_dataset(self.cfg, split=split, subset_ids=subset_ids, transform=build_val_transform(self.cfg))

@@ -10,7 +10,24 @@ import torch.nn.functional as F
 @torch.no_grad()
 def sliding_window_inference(model, image: torch.Tensor, crop_size: tuple[int, int], stride: tuple[int, int],
                               num_classes: int, device: torch.device) -> torch.Tensor:
-    """`image`: [C, H, W], already normalized. Returns [H, W] predicted class ids (CPU)."""
+    """Predict a full-resolution image by averaging logits over overlapping crops.
+
+    The image is zero-padded bottom/right up to at least `crop_size`, tiled with the given
+    stride (with an extra final row/column of tiles flush with the bottom/right edge so
+    every pixel is covered), each tile's logits are summed into a canvas, divided by the
+    per-pixel tile count, cropped back to the original size, and argmaxed once.
+
+    Args:
+        model: A `SegmentationModel` on `device`, in eval mode.
+        image: `[C, H, W]`, already normalized (CPU or `device`).
+        crop_size: Tile size `(h, w)` — the training crop size.
+        stride: Tile step `(h, w)`; smaller than `crop_size` gives overlap.
+        num_classes: Number of output channels of `model`.
+        device: Device for tiles and the logit accumulator.
+
+    Returns:
+        `[H, W]` predicted class ids (CPU, int64).
+    """
     c, h, w = image.shape
     ch, cw = crop_size
     sh, sw = stride

@@ -16,6 +16,12 @@ _IMAGENET_STD = (0.229, 0.224, 0.225)
 
 class ResNetExtractor(FeatureExtractor):
     def __init__(self, cfg):
+        """Load a torchvision classifier and drop its final fc layer (keeps global avg-pool).
+
+        Args:
+            cfg: The resolved `features:` sub-config (needs `model_name`, e.g. `resnet50`,
+                and `image_size`; optional `weights`, default `IMAGENET1K_V2`).
+        """
         super().__init__(cfg)
         self.outputs = ["cls"]
         weights = tvm.get_model_weights(cfg.model_name)[cfg.get("weights", "IMAGENET1K_V2")]
@@ -30,9 +36,22 @@ class ResNetExtractor(FeatureExtractor):
         ])
 
     def preprocess(self, image: Image.Image) -> torch.Tensor:
+        """Resize the short side to `image_size`, center-crop square, ImageNet-normalize.
+
+        Args:
+            image: PIL image.
+
+        Returns:
+            `[3, image_size, image_size]` float tensor.
+        """
         return self._transform(image.convert("RGB"))
 
     @torch.no_grad()
     def extract_batch(self, batch: torch.Tensor) -> dict[str, torch.Tensor]:
+        """Return pooled penultimate features as `{"cls": [B, D]}`, L2-normalized, on CPU.
+
+        Args:
+            batch: `[B, 3, H, W]` stack of `preprocess` outputs.
+        """
         feats = self.model(batch.to(self.device)).flatten(1)
         return {"cls": F.normalize(feats, dim=-1).cpu()}

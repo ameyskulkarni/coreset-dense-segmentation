@@ -29,6 +29,16 @@ DEFAULT_RUNS_CSV = Path("results/metrics/runs.csv")
 
 
 def append_run(row: dict, csv_path: Path | str = DEFAULT_RUNS_CSV) -> None:
+    """Append one finished run as a row of the results ledger (header written on first use).
+
+    Only `RUNS_CSV_COLUMNS` are written, in that order: missing keys become empty cells and
+    unknown keys are silently dropped. `timestamp` defaults to the current UTC time, and a
+    dict/list `per_class_iou_json` is JSON-encoded.
+
+    Args:
+        row: Column name -> value. Not mutated (a copy is made).
+        csv_path: Ledger path; defaults to `results/metrics/runs.csv` relative to the CWD.
+    """
     csv_path = Path(csv_path)
     csv_path.parent.mkdir(parents=True, exist_ok=True)
     row = dict(row)

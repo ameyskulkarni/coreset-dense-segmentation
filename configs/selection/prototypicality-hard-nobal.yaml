@@ -1,0 +1,22 @@
+# Prototypicality (Sorscher et al. 2022, §6; plan §5.1) — keep the LEAST prototypical images (paper's default: prune easy/redundant ones);
+# NO balancing (balance 0): plain global ranking — the paper's unbalanced metric, kept as a reference variant.
+# Walkthrough + commands: docs/prototypicality.md.
+#
+# `name: auto` generates the selection name from every setting that changes the subset:
+#   proto-<keep>-k<k>-bal<balance x 100>-<embedding tag>      e.g. proto-hard-k20-bal50-dinov2vitb14-cls
+# It becomes the subset filename (<dataset>_<name>_<ratio>_<seed>.json), the selection_method
+# in runs.csv and the default run name, so `--set selection.k=10` (or any keep / balance /
+# embedding override) automatically gets its own files — no manual renaming needed.
+name: auto     # -> proto-hard-k20-bal0-dinov2vitb14-cls
+method: prototypicality
+k: 20          # number of prototypes (spherical k-means clusters); experiments run k in {10, 20, 50} via --set selection.k=<k>
+keep: hard
+balance: 0.0
+n_init: 10     # spherical k-means restarts (lowest total cosine distance kept); the selection --seed seeds them
+max_iter: 300
+embedding:     # which saved embeddings to cluster — see segcoreset/features/embeddings.py
+  source: derived          # results/features/<dataset>/derived.parquet (00b_derive_embeddings.py); or: raw (.pt cache)
+  backbone: dinov2_vitb14  # features config name used at extraction
+  method: cls              # 00b derivation: cls | patch_mean | kmeans_hist
+  params: {}               # must equal the 00b params exactly (kmeans_hist: {K: 256, seed: 0})
+  split: train

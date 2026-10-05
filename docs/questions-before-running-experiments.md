@@ -159,7 +159,7 @@ size are independent knobs, again per dataset.
 
 Feature-extraction resolution (for DINOv2/CLIP/ResNet/SegFormer-encoder
 selection features) is a *separate*, also-fixed-per-extractor size
-(e.g. DINOv2 ViT-S/14 uses 518×518, `configs/features/dinov2_vits14.yaml`) —
+(e.g. DINOv2 ViT-B/14 uses 518×518, `configs/features/dinov2_vitb14.yaml`) —
 unrelated to the training crop size, since selection happens before training
 on cached features.
 

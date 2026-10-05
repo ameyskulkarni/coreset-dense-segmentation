@@ -17,6 +17,7 @@ dependencies = [
     "wandb",
     "tqdm",
     "pandas",
+    "pyarrow",
 ]
 
 [build-system]

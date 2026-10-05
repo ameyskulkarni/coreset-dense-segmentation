@@ -29,7 +29,7 @@ overridable via `CITYSCAPES_ROOT`/`ADE20K_ROOT`/`CAMVID_ROOT` env vars (see
 
 Pipeline (one script per stage, `scripts/00-04_*.py`):
 ```bash
-python scripts/00_extract_features.py --dataset cityscapes --features dinov2_vits14   # only needed for feature-based selectors
+python scripts/00_extract_features.py --dataset cityscapes --features dinov2_vitb14   # only needed for feature-based selectors
 python scripts/01_compute_rare_classes.py --dataset cityscapes                        # once per dataset, freezes bottom-K rare classes
 python scripts/02_select.py --dataset cityscapes --selection random --ratio 0.1 --seed 0
 python scripts/03_train.py --dataset cityscapes --model segformer_b0 --recipe cityscapes_proxy \

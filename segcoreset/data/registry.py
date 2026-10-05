@@ -13,6 +13,20 @@ DATASET_REGISTRY = {
 
 
 def build_dataset(dataset_cfg, split: str, subset_ids=None, transform=None):
+    """Instantiate the dataset class registered under `dataset_cfg.name`.
+
+    Args:
+        dataset_cfg: The resolved `dataset:` sub-config.
+        split: On-disk split name (usually `dataset_cfg.train_split` / `val_split`).
+        subset_ids: Optional image ids to restrict to.
+        transform: Optional joint image+label transform.
+
+    Returns:
+        A `SegmentationDataset` subclass instance.
+
+    Raises:
+        ValueError: If `dataset_cfg.name` is not in `DATASET_REGISTRY`.
+    """
     name = dataset_cfg.name
     if name not in DATASET_REGISTRY:
         raise ValueError(f"Unknown dataset '{name}'. Available: {list(DATASET_REGISTRY)}")

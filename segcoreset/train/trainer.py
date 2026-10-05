@@ -39,7 +39,11 @@ def _seed_worker(worker_id: int) -> None:
     """DataLoader workers are forked from the parent process and otherwise inherit its
     `random`/`numpy` RNG state verbatim, so all workers draw correlated augmentation
     parameters (RandomScale/RandomCrop/RandomHorizontalFlip in ../data/transforms.py use
-    the plain `random` module). Reseed each worker from its own torch-assigned seed."""
+    the plain `random` module). Reseed each worker from its own torch-assigned seed.
+
+    Args:
+        worker_id: Worker index (unused; the per-worker torch seed already differs).
+    """
     worker_seed = torch.initial_seed() % 2**32
     np.random.seed(worker_seed)
     random.seed(worker_seed)
@@ -47,6 +51,22 @@ def _seed_worker(worker_id: int) -> None:
 
 class Trainer:
     def __init__(self, cfg, subset_ids: list[str] | None, run_dir: Path, wandb_run=None):
+        """Seed RNGs and build everything a run needs: data, model, loss, optimizer, schedule.
+
+        This is the ONLY place `recipe.epochs` / `recipe.warmup_epochs` are converted to step
+        counts, using the realized subset size: `steps_per_epoch = len(train_ds) // batch_size`.
+
+        Args:
+            cfg: Full resolved run config (needs `dataset`, `model`, `recipe`).
+            subset_ids: Train image ids to use (from a subset file), or `None` for the full
+                train split.
+            run_dir: Directory for `last.pt` / `final.pt` checkpoints.
+            wandb_run: Active W&B run to log to, or `None` to log only to stdout.
+
+        Raises:
+            ValueError: If the subset has fewer images than `recipe.batch_size` (zero steps
+                per epoch).
+        """
         self.cfg = cfg
         self.run_dir = Path(run_dir)
         self.wandb_run = wandb_run
@@ -94,6 +114,19 @@ class Trainer:
         # instead of forking, avoiding this hazard entirely (standard fix for CUDA +
         # multiprocessing DataLoader workers). Costs a bit of extra worker startup time
         # (each re-imports the process); worth it for correctness on unattended runs.
+        """Yield training batches forever, reshuffling on each pass over `dataset`.
+
+        `drop_last=True`, so each pass is exactly `steps_per_epoch` batches. Worker processes
+        (when `recipe.num_workers > 0`) are persistent, use the "spawn" start method (see the
+        comment below), and are reseeded via `_seed_worker`.
+
+        Args:
+            dataset: The training dataset.
+
+        Yields:
+            Collated batch dicts with `"image"` `[B, 3, h, w]`, `"label"` `[B, h, w]`, and
+            `"image_id"` (list of str).
+        """
         loader = DataLoader(
             dataset, batch_size=self.cfg.recipe.batch_size, shuffle=True,
             num_workers=self.cfg.recipe.num_workers, drop_last=True, pin_memory=True,
@@ -105,10 +138,29 @@ class Trainer:
             yield from loader
 
     def _log(self, metrics: dict, step: int) -> None:
+        """Log `metrics` to W&B at `step` if a run is attached; otherwise do nothing."""
         if self.wandb_run is not None:
             self.wandb_run.log(metrics, step=step)
 
     def train(self) -> dict:
+        """Run the full training loop, then the final full-protocol evaluation.
+
+        Per step: forward/backward under optional fp16 autocast with gradient scaling, optional
+        gradient-norm clipping (`recipe.grad_clip_norm`), optimizer step, then LR schedule step.
+        Every `recipe.log_every` steps, logs mean loss, LR, throughput, and fractional epoch.
+        Every `recipe.eval_every_epochs` epochs (except at the very end), runs a cheap
+        whole-image eval on `recipe.eval_max_images` (default 100) val images without
+        boundary-F — a trend line, not comparable to the final Cityscapes metric. Every
+        `recipe.save_every_epochs` epochs, overwrites `<run_dir>/last.pt`.
+
+        After the loop, saves `<run_dir>/final.pt` and runs `Evaluator.evaluate` with the
+        dataset's real protocol and boundary-F.
+
+        Returns:
+            A dict with `metrics` (final eval dict), `gpu_hours` (training wall-clock hours,
+            excluding final eval), `epochs`, `iterations` (total steps), and `checkpoint`
+            (path to `final.pt`).
+        """
         cfg = self.cfg
         total_iters = self.total_iters
         eval_every = cfg.recipe.get("eval_every_epochs", 0) * self.steps_per_epoch

@@ -4,9 +4,9 @@ Training and evaluation system for **label-free coreset selection for semantic
 segmentation** (see `segmentation-coreset-experiment-plan.md` for the full research plan —
 this repo implements §12 of that document).
 
-This is the models/training/eval/feature-extraction system only. Selection *methods*
-beyond the `random`/`full` reference points, and the aggregate-tables/plotting scripts, are
-not built yet — see "What's not here yet" below.
+Selection methods implemented so far: the `random`/`full` reference points and
+`prototypicality` (docs/prototypicality.md). The other baselines and the
+aggregate-tables/plotting scripts are not built yet — see "What's not here yet" below.
 
 ## Setup
 
@@ -35,7 +35,7 @@ segcoreset/
   data/              # dataset wrappers (Cityscapes/ADE20K/CamVid), joint transforms, rare-class freq
   features/          # DINOv2/DINOv3/ResNet-50/SegFormer-encoder/CLIP extractors + on-disk cache
   models/            # SegFormer-B0, DeepLabV3+, U-Net — common forward(pixel_values)->logits contract
-  selection/         # common select() interface; random + full implemented, rest drop in as new files
+  selection/         # common select() interface; random, full, prototypicality/ implemented, rest drop in as new files
   train/             # fixed-epoch Trainer (loss, LR schedule, AMP, checkpointing, W&B)
   eval/               # Evaluator (mIoU, rare-class mIoU, boundary F, pixel acc), sliding-window inference
   logging/           # results/metrics/runs.csv ledger (append-only) + thin W&B wrapper
@@ -69,13 +69,17 @@ exact reproducibility.
 
 ```bash
 # 1. cache DINOv2 features (needed once you add feature-based selectors; random/full skip this)
-python scripts/00_extract_features.py --dataset ade20k --features dinov2_vits14
+python scripts/00_extract_features.py --dataset ade20k --features dinov2_vitb14
 
 # 2. freeze the rare-class list from full-train pixel frequency (once per dataset)
 python scripts/01_compute_rare_classes.py --dataset ade20k --k 15
 
 # 3. select a subset (label-free, before any training)
 python scripts/02_select.py --dataset ade20k --selection random --ratio 0.2 --seed 0
+#    feature-based selectors (e.g. prototypicality) read saved embeddings — full walkthrough
+#    in docs/prototypicality.md:
+python scripts/00b_derive_embeddings.py --dataset cityscapes --features dinov2_vitb14 --method cls
+python scripts/02_select.py --dataset cityscapes --selection prototypicality-hard --ratio 0.2 --seed 0
 
 # 4. train (fixed-epoch recipe; periodic + final eval; logs to W&B; appends to runs.csv)
 python scripts/03_train.py --dataset ade20k --model segformer_b0 --recipe ade20k_proxy \
@@ -115,7 +119,7 @@ and re-freeze.
 
 ## What's not here yet
 
-- Label-free selection methods beyond `random`/`full` (prototypicality, k-center,
+- Label-free selection methods beyond `random`/`full`/`prototypicality` (k-center,
   SemDeDup, bpp, ZCore, `patch_coverage`) — drop in as new modules under
   `segcoreset/selection/` (see `selection/base.py` for the interface) once features are cached.
 - `05_aggregate.py` / `06_plots.py` (paper tables/figures, retention computation) and a

@@ -28,6 +28,11 @@ from segcoreset.utils.logging_setup import setup_logging
 
 
 def main():
+    """CLI entry point: reload a run's config and checkpoint, re-evaluate, append a new row.
+
+    Uses the dataset's full eval protocol with boundary-F. The appended row's `run_id` is
+    `<run_dir name>_eval`; selection method, ratio, and image count are left blank.
+    """
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--run-dir", required=True, help="directory written by 03_train.py (contains config.yaml + a checkpoint)")
     parser.add_argument("--checkpoint", default="final.pt")

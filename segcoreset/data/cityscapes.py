@@ -29,6 +29,14 @@ CLASS_NAMES = [
 
 
 def _build_lut() -> np.ndarray:
+    """Build a 256-entry lookup table from raw Cityscapes `labelIds` to the 19 train ids.
+
+    Every raw id not in `_LABEL_ID_TO_TRAIN_ID` (and every id mapped to 255 there) becomes
+    255, so indexing the table with any uint8 label image is safe.
+
+    Returns:
+        A `[256]` uint8 array usable as `lut[raw_label]`.
+    """
     lut = np.full(256, 255, dtype=np.uint8)
     for raw_id, train_id in _LABEL_ID_TO_TRAIN_ID.items():
         lut[raw_id] = train_id
@@ -42,6 +50,18 @@ class CityscapesDataset(SegmentationDataset):
     _lut = _build_lut()
 
     def _list_samples(self, split: str) -> list[Sample]:
+        """List `leftImg8bit/<split>/<city>/*_leftImg8bit.png` with their `gtFine_labelIds` labels.
+
+        Args:
+            split: `"train"`, `"val"`, or `"test"`.
+
+        Returns:
+            One `Sample` per image, sorted by path; `image_id` is the filename with the
+            `_leftImg8bit.png` suffix removed (e.g. `aachen_000000_000019`).
+
+        Raises:
+            FileNotFoundError: If `leftImg8bit/<split>` does not exist.
+        """
         root = Path(self.cfg.root)
         img_dir, lbl_dir = root / "leftImg8bit" / split, root / "gtFine" / split
         if not img_dir.exists():
@@ -54,4 +74,12 @@ class CityscapesDataset(SegmentationDataset):
         return samples
 
     def _encode_label(self, raw: np.ndarray) -> np.ndarray:
+        """Map raw 34-class `labelIds` to the 19 eval train ids via the precomputed LUT.
+
+        Args:
+            raw: Raw `*_gtFine_labelIds.png` values, `[H, W]`.
+
+        Returns:
+            `[H, W]` uint8 train ids, 255 for void/ignored classes.
+        """
         return self._lut[raw]
