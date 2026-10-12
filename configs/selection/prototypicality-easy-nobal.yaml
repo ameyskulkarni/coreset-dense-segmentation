@@ -17,6 +17,6 @@ max_iter: 300
 embedding:     # which saved embeddings to cluster — see segcoreset/features/embeddings.py
   source: derived          # results/features/<dataset>/derived.parquet (00b_derive_embeddings.py); or: raw (.pt cache)
   backbone: dinov2_vitb14  # features config name used at extraction
-  method: cls              # 00b derivation: cls | patch_mean | kmeans_hist
-  params: {}               # must equal the 00b params exactly (kmeans_hist: {K: 256, seed: 0})
+  method: cls              # 00b derivation: cls | patch_mean | kmeans_hist (patch_dist is for patch_scores:, see prototypicality-hard-patchtail.yaml)
+  params: {}               # must equal the 00b params exactly (kmeans_hist: {K: 256, n_sample: 200, seed: 0})
   split: train

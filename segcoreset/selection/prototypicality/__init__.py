@@ -2,7 +2,8 @@
 §6) — label-free: spherical (cosine) k-means on self-supervised image embeddings, score =
 cosine distance to the nearest centroid, keep the hardest (or easiest) `budget` images.
 
-    scoring.py   embeddings -> spherical k-means -> per-image distance + cluster   (paper steps 1-3)
+    scoring.py   embeddings -> spherical k-means -> per-image distance + cluster   (paper steps 1-3);
+                 `tail_mean`: the Proposal 1 patch-tail score that can replace the distance
     pruning.py   scores -> exactly `budget` kept indices, optional cluster balancing (step 4)
     selector.py  `select()` registry entry point + `run()` for full debug output
 
@@ -10,10 +11,10 @@ Self-contained: registered by one line in `../registry.py`; delete that line (an
 package) to unplug it. Walkthrough: docs/prototypicality.md.
 """
 from .pruning import PruneResult, select_by_score
-from .scoring import PrototypeScores, compute_prototype_scores
+from .scoring import PrototypeScores, compute_prototype_scores, tail_mean
 from .selector import PrototypicalityConfig, PrototypicalityResult, auto_name, run, select
 
 __all__ = [
-    "PrototypeScores", "compute_prototype_scores", "PruneResult", "select_by_score",
+    "PrototypeScores", "compute_prototype_scores", "tail_mean", "PruneResult", "select_by_score",
     "PrototypicalityConfig", "PrototypicalityResult", "auto_name", "run", "select",
 ]

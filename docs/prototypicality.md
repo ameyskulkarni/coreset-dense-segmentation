@@ -57,15 +57,19 @@ configs/selection/
   prototypicality-easy.yaml         keep=easy, balance=0.5
   prototypicality-hard-nobal.yaml   keep=hard, balance=0.0   (paper's unbalanced metric, reference)
   prototypicality-easy-nobal.yaml   keep=easy, balance=0.0
+  prototypicality-hard-patchtail.yaml   Proposal 1: same clusters, patch-tail score (§5.1)
 
 segcoreset/selection/prototypicality/
   __init__.py     public exports
-  scoring.py      steps 1-3: normalize -> spherical k-means -> distance to nearest prototype
+  scoring.py      steps 1-3: normalize -> spherical k-means -> distance to nearest prototype;
+                  tail_mean() = the Proposal 1 patch-tail score
   pruning.py      step 4: distances -> exactly `budget` kept rows (+ cluster balancing)
   selector.py     PrototypicalityConfig, run() (everything), select() (registry entry), auto_name()
 segcoreset/selection/registry.py    SELECTOR_REGISTRY + AUTO_NAMERS + selection_name()
 
-segcoreset/features/embeddings.py   loads the [N, D] embedding matrix; EmbeddingSpec.tag()
+segcoreset/features/embeddings.py   loads the [N, D] embedding matrix; EmbeddingSpec.tag();
+                                    load_selection_features() (+ the patch_scores: block)
+segcoreset/features/patch_vocab.py  patch sample -> spherical k-means vocabulary -> per-patch assignment
 segcoreset/features/derived.py      derived.parquet store (written by 00b)
 segcoreset/features/store.py        raw per-image .pt cache (written by 00)
 
@@ -74,6 +78,8 @@ scripts/00b_derive_embeddings.py     .pt cache -> one vector per image -> derive
 scripts/02_select.py                 runs the selector, writes results/subsets/*.json
 scripts/02b_inspect_prototypicality.py   same selection, dumps every intermediate; k-sweep
 scripts/02c_cluster_diagnostics.py   silhouette / elbow curves of an embedding (diagnostic only)
+scripts/02d_patch_tail_checks.py     Proposal 1 offline checks (vs centroid score, vocabulary sensitivity)
+scripts/02e_concept_coverage.py      label-free rare-concept coverage of any subset files
 scripts/03_train.py / 04_eval.py     unchanged; consume the subset file like any other
 ```
 
@@ -316,17 +322,45 @@ source, method, params, dim, embedding (list<float32>), config_hash, created_at`
 |---|---|---|
 | `cls` | the cached CLS vector, as is | 768 |
 | `patch_mean` | mean of the 37×37 patch grid, re-L2-normalized | 768 |
-| `kmeans_hist` | MiniBatchKMeans over all train patches → K pseudo-classes; normalized histogram of the image's patches (`params: {K, seed}`) | K |
+| `kmeans_hist` | normalized histogram of the image's patches over the K-prototype patch vocabulary (`params: {K, n_sample, seed}`) | K |
+| `patch_dist` | every patch's cosine distance to its nearest vocabulary prototype, row-major over the grid (`params: {K, n_sample, seed}`); used by `patch_scores:` (§5.1), not as `embedding:` | 1,369 |
+
+`kmeans_hist` and `patch_dist` share one **patch vocabulary** per `(K, n_sample, seed)`
+(`segcoreset/features/patch_vocab.py`): `n_sample` patches drawn uniformly without
+replacement from every train image (seeded per image id), spherical k-means with 3 restarts
+on the GPU, saved to `results/features/<dataset>/vocab/<backbone>-K<K>-n<n>-seed<s>.npz` and
+reused by every later derivation and split. This replaced the original streaming
+`MiniBatchKMeans.partial_fit` fit (audit #4: all centroids seeded from the first image,
+cities fed in sorted order); no subset had been built from the old `kmeans_hist`.
 
 Re-running a derivation replaces its rows. Cityscapes `cls` is ~9.8 MB (2,975 × 768 float32
 plus metadata).
 
 **How `embedding:` is resolved.** `source: derived` filters the table on `split`,
 `backbone`, `method` and `params` (compared as canonical sorted-key JSON, so `{}` ≠
-`{K: 256, seed: 0}`) and orders rows to match `image_ids`. `source: raw` reads tensor `key`
+`{K: 256, n_sample: 200, seed: 0}`) and orders rows to match `image_ids`. `source: raw` reads tensor `key`
 (default `cls`) from each `.pt`; only 1-D tensors are allowed, so `patch` must go through
 `00b` first. Every candidate image must have exactly one embedding (missing or duplicate ids
 raise), and NaN/Inf values raise — selection never silently skips images.
+
+### 5.1 Proposal 1: the patch-tail score (`score: patch_tail`)
+
+`configs/selection/prototypicality-hard-patchtail.yaml` adds `score: patch_tail`, `q` and a
+second block, `patch_scores:` (a `patch_dist` derivation). `02_select.py` then passes the
+selector a dict `{"embedding": [N, 768], "patch_scores": [N, 1369]}`, and `run()`:
+
+1. clusters `embedding:` exactly as before (same k, seed, n_init) — these clusters are used
+   **only** for cluster balancing;
+2. replaces the centroid distance by `tail_mean(patch_scores, q)`: the mean of the image's
+   top `ceil(q · 1369)` patch distances (q = 0.05 → 69 patches; q = 1.0 → all patches);
+3. calls `select_by_score` unchanged.
+
+So with `embedding: patch_mean`, `k: 50` and the same seed, a patch-tail subset differs from
+the Exp 9 subset (patch-mean k50) in the score only. The name gets
+`-tailq<q·100>-<patch_scores tag>` appended; `score: centroid` names are unchanged. The
+selection seed seeds only the image k-means; the vocabulary is a fixed derivation, whose
+sensitivity (K, n_sample, sample seed) `02d_patch_tail_checks.py` measures. Why K = 256 and
+200 patches per image: docs/proposals-explained.md, "Proposal 1".
 
 ---
 
@@ -362,7 +396,8 @@ Examples (all verified):
 | `--selection prototypicality-easy` | `proto-easy-k20-bal50-dinov2vitb14-cls` |
 | `--selection prototypicality-hard-nobal` | `proto-hard-k20-bal0-dinov2vitb14-cls` |
 | `... --set selection.embedding.method=patch_mean` | `proto-hard-k20-bal50-dinov2vitb14-patchmean` |
-| `... --set selection.embedding.method=kmeans_hist selection.embedding.params.K=256 selection.embedding.params.seed=0` | `proto-hard-k20-bal50-dinov2vitb14-kmeanshist-K256-seed0` |
+| `... --set selection.embedding.method=kmeans_hist selection.embedding.params.K=256 selection.embedding.params.n_sample=200 selection.embedding.params.seed=0` | `proto-hard-k20-bal50-dinov2vitb14-kmeanshist-K256-nsample200-seed0` |
+| `--selection prototypicality-hard-patchtail` | `proto-hard-k50-bal50-dinov2vitb14-patchmean-tailq5-dinov2vitb14-patchdist-K256-nsample200-seed0` |
 
 Because the name is generated, `--set` overrides never collide with another variant's files.
 You can still set an explicit name (`--set selection.name=my-name`); it must not contain `_`.
@@ -801,7 +836,7 @@ Known gaps:
 | `RuntimeError` about a dirty tree in `03_train.py` | uncommitted code, configs or subset files | commit them (`--allow-dirty` only for smoke tests) |
 | warning `N/k prototypes have no members` | k too large, or many duplicate images | lower k |
 | warning `N/10 spherical k-means restarts hit max_iter` | didn't converge | raise `max_iter` (changes the name: `-maxiter<n>`) |
-| `--set 'selection.embedding.params={K:256,seed:0}'` matches nothing | without spaces OmegaConf parses keys `"K:256"`, `"seed:0"` | use `selection.embedding.params.K=256 selection.embedding.params.seed=0`, or `{K: 256, seed: 0}` with spaces |
+| `--set 'selection.embedding.params={K:256,n_sample:200,seed:0}'` matches nothing | without spaces OmegaConf parses keys `"K:256"`, ... | use `selection.embedding.params.K=256 selection.embedding.params.n_sample=200 selection.embedding.params.seed=0`, or `{K: 256, n_sample: 200, seed: 0}` with spaces |
 
 ---
 

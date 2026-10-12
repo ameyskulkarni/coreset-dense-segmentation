@@ -1,7 +1,8 @@
 """Load one per-image embedding matrix, row-aligned with a list of image ids, for a
 feature-based selector. Selectors never read feature files themselves: `02_select.py`
 resolves a selection config's `embedding:` block through `load_embedding_matrix` and hands
-the selector a plain `[N, D]` array (row i <-> image_ids[i]).
+the selector a plain `[N, D]` array (row i <-> image_ids[i]). A config with a second
+`patch_scores:` block gets both, as a dict (`load_selection_features`).
 
 Two sources are supported:
 
@@ -15,8 +16,8 @@ Example `embedding:` block (in a `configs/selection/*.yaml`):
     embedding:
       source: derived
       backbone: dinov2_vitb14
-      method: cls          # derived: 00b method (cls | patch_mean | kmeans_hist)
-      params: {}           # derived: must match the 00b params exactly, e.g. {K: 256, seed: 0}
+      method: cls          # derived: 00b method (cls | patch_mean | kmeans_hist | patch_dist)
+      params: {}           # derived: must match the 00b params exactly, e.g. {K: 256, n_sample: 200, seed: 0}
       split: train
       key: cls             # raw only: which tensor of the cached dict to read
 """
@@ -136,6 +137,32 @@ def load_embedding_matrix(
         raise ValueError(f"{len(bad)} embeddings contain NaN/Inf, e.g. {[ids[i] for i in bad[:3]]}")
     log.info("Loaded %d x %d embeddings from %s", *X.shape, spec.describe())
     return X
+
+
+def load_selection_features(dataset: str, image_ids: Sequence[str], sel_cfg, root: Path | str = DEFAULT_FEATURES_ROOT):
+    """Load everything a selection config's feature blocks ask for, row-aligned with `image_ids`.
+
+    `embedding:` is the per-image matrix every feature-based selector clusters/scores.
+    `patch_scores:` (optional; prototypicality `score: patch_tail`) is a second derived matrix,
+    the per-patch distances to the patch vocabulary.
+
+    Args:
+        dataset: Dataset name.
+        image_ids: Ids, in the desired row order.
+        sel_cfg: The resolved `selection:` sub-config.
+        root: Features root directory.
+
+    Returns:
+        `None` if there is no `embedding:` block; the `[N, D]` matrix if there is only
+        `embedding:`; else the dict `{"embedding": [N, D], "patch_scores": [N, P]}`.
+    """
+    if "embedding" not in sel_cfg:
+        return None
+    X = load_embedding_matrix(dataset, image_ids, EmbeddingSpec.from_cfg(sel_cfg["embedding"]), root=root)
+    if "patch_scores" not in sel_cfg:
+        return X
+    P = load_embedding_matrix(dataset, image_ids, EmbeddingSpec.from_cfg(sel_cfg["patch_scores"]), root=root)
+    return {"embedding": X, "patch_scores": P}
 
 
 def _load_derived(dataset: str, ids: list[str], spec: EmbeddingSpec, root: Path) -> np.ndarray:

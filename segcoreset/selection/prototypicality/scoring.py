@@ -184,3 +184,30 @@ def compute_prototype_scores(X: np.ndarray, k: int, seed: int, n_init: int = 10,
         log.warning("%d/%d prototypes have no members (k may be too large for N=%d)", empty, k, n)
 
     return PrototypeScores(distance=distance, cluster=cluster, centroids=C, inertia=float(2.0 * distance.sum()))
+
+
+def tail_mean(patch_dist: np.ndarray, q: float) -> np.ndarray:
+    """Proposal 1 ("dense prototypicality") image score: the mean of each image's top-q
+    fraction of patch distances to the patch vocabulary.
+
+    `q = 1` averages every patch (the "same patches, no tail" control); small `q` scores an
+    image by its few most unusual patches, so a small rare object can make the image hard.
+
+    Args:
+        patch_dist: `[N, P]` per-patch cosine distances to the nearest patch prototype
+            (`00b_derive_embeddings.py --method patch_dist`).
+        q: Tail fraction in (0, 1]; the top `ceil(q * P)` patches are averaged.
+
+    Returns:
+        `[N]` float64 scores; higher = harder.
+
+    Raises:
+        ValueError: If `patch_dist` is not 2-D or `q` is outside (0, 1].
+    """
+    D = np.asarray(patch_dist, dtype=np.float64)
+    if D.ndim != 2:
+        raise ValueError(f"expected an [N, P] patch-distance matrix, got shape {D.shape}")
+    if not 0.0 < q <= 1.0:
+        raise ValueError(f"q must be in (0, 1], got {q}")
+    m = int(np.ceil(q * D.shape[1]))
+    return np.partition(D, D.shape[1] - m, axis=1)[:, D.shape[1] - m:].mean(axis=1)

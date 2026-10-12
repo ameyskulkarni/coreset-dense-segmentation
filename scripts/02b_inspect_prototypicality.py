@@ -33,7 +33,7 @@ import pandas as pd
 from scipy.stats import spearmanr
 
 from segcoreset.data.registry import build_dataset
-from segcoreset.features.embeddings import DEFAULT_FEATURES_ROOT, EmbeddingSpec, load_embedding_matrix
+from segcoreset.features.embeddings import DEFAULT_FEATURES_ROOT, load_selection_features
 from segcoreset.selection.prototypicality import PrototypicalityConfig, run
 from segcoreset.selection.registry import selection_name
 from segcoreset.utils.config import build_config
@@ -49,7 +49,8 @@ def scores_frame(res, budget: int | None) -> pd.DataFrame:
 
     Returns:
         One row per image (`image_id`, `cluster`, `distance`, `keep_priority_rank`,
-        optional `selected`), sorted by keep-priority rank.
+        `centroid_distance` for `score: patch_tail`, optional `selected`), sorted by
+        keep-priority rank.
     """
     s = res.scores
     rank = np.empty(len(res.image_ids), dtype=int)
@@ -58,6 +59,8 @@ def scores_frame(res, budget: int | None) -> pd.DataFrame:
         "image_id": res.image_ids, "cluster": s.cluster,
         "distance": s.distance, "keep_priority_rank": rank,
     })
+    if res.centroid_distance is not None:  # score: patch_tail -> `distance` is the tail score
+        df["centroid_distance"] = res.centroid_distance
     if budget is not None:
         df["selected"] = False
         df.loc[res.prune.selected, "selected"] = True
@@ -94,7 +97,7 @@ def k_sweep(ids, X, budget, base: PrototypicalityConfig, ks, seeds) -> pd.DataFr
 
     Args:
         ids: Candidate image ids.
-        X: `[N, D]` embedding matrix.
+        X: `[N, D]` embedding matrix (or the `run` features dict).
         budget: Images to keep per run.
         base: Config whose fields other than `k` are held fixed.
         ks: k values to sweep (sorted).
@@ -161,7 +164,7 @@ def main():
         raise SystemExit(f"--selection {args.selection} is method '{cfg.selection.method}', not prototypicality")
 
     ids = build_dataset(cfg.dataset, split=cfg.dataset.train_split).image_ids()
-    X = load_embedding_matrix(cfg.dataset.name, ids, EmbeddingSpec.from_cfg(cfg.selection.embedding), root=args.features_root)
+    X = load_selection_features(cfg.dataset.name, ids, cfg.selection, root=args.features_root)
     budget = round(args.ratio * len(ids)) if args.ratio is not None else 0
     res = run(ids, X, budget, args.seed, cfg.selection)
 
@@ -175,7 +178,8 @@ def main():
     cl.to_csv(out / f"{stem}_clusters.csv", index=False)
 
     by_dist = df.sort_values(["distance", "image_id"])
-    print(f"\nSelection: {name}\nEmbeddings: {X.shape[0]} x {X.shape[1]}  |  config: {res.config}")
+    shapes = {k: v.shape for k, v in X.items()} if isinstance(X, dict) else X.shape
+    print(f"\nSelection: {name}\nEmbeddings: {shapes}  |  config: {res.config}")
     print("Summary:", res.summary() if args.ratio is not None else {k: v for k, v in res.summary().items() if "selected" not in k})
     print(f"\nPer-cluster table ({out / f'{stem}_clusters.csv'}):\n{cl.to_string(index=False, float_format='%.4f')}")
     print(f"\n{args.top} MOST prototypical (easy):\n{by_dist.head(args.top)[['image_id', 'cluster', 'distance']].to_string(index=False)}")

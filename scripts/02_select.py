@@ -9,7 +9,8 @@ Usage:
 
 Feature-based selectors declare an `embedding:` block in their selection config; the matching
 saved embeddings are loaded (segcoreset/features/embeddings.py) and passed to the selector as
-an [N, D] matrix row-aligned with the image ids. The subset filename uses `selection.name`
+an [N, D] matrix row-aligned with the image ids (plus the per-patch distances, as a dict, when
+the config also has a `patch_scores:` block). The subset filename uses `selection.name`
 (`name: auto` generates a descriptive one, e.g. `proto-hard-k20-bal50-dinov2vitb14-cls`).
 """
 from __future__ import annotations
@@ -24,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from omegaconf import OmegaConf
 
 from segcoreset.data.registry import build_dataset
-from segcoreset.features.embeddings import DEFAULT_FEATURES_ROOT, EmbeddingSpec, load_embedding_matrix
+from segcoreset.features.embeddings import DEFAULT_FEATURES_ROOT, load_selection_features
 from segcoreset.selection.io import load_subset, save_subset, subset_path
 from segcoreset.selection.registry import get_selector, selection_name
 from segcoreset.utils.config import build_config
@@ -35,7 +36,8 @@ def main():
     """CLI entry point: run one selector over the full train split and write the subset file.
 
     Budget is `round(ratio * N)` (all N for `full`). If the selection config has an
-    `embedding:` block, the matching embeddings are loaded and passed as `features`. An
+    `embedding:` block (and optionally `patch_scores:`), the matching embeddings are loaded
+    and passed as `features`. An
     existing subset file with identical ids is kept untouched; one with different ids is
     only overwritten with `--force`.
 
@@ -72,10 +74,7 @@ def main():
 
     name = selection_name(cfg.selection)  # `name: auto` -> generated from the settings
 
-    features = None
-    if "embedding" in cfg.selection:
-        spec = EmbeddingSpec.from_cfg(cfg.selection.embedding)
-        features = load_embedding_matrix(cfg.dataset.name, image_ids, spec, root=args.features_root)
+    features = load_selection_features(cfg.dataset.name, image_ids, cfg.selection, root=args.features_root)
 
     selector = get_selector(cfg.selection.method)
     t0 = time.perf_counter()

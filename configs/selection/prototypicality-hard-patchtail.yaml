@@ -1,0 +1,40 @@
+# Proposal 1, "dense prototypicality" (docs/proposals-explained.md, "Proposal 1"): the
+# prototypicality-hard selector with ONE change, the image score. Instead of an image's cosine
+# distance to its k-means prototype, an image is scored by the mean of its top-q fraction of
+# patch distances to a patch vocabulary (a few very unusual patches make it hard).
+#
+# Two feature blocks, two jobs:
+#   embedding:     clustered into k image clusters, used ONLY for cluster balancing. Same
+#                  embedding, k, keep, balance and seed as Exp 9 (patch-mean k50) -> identical
+#                  clusters, so the score is the only difference.
+#   patch_scores:  per-patch distances to the patch vocabulary (K prototypes fitted on
+#                  n_sample random patches per train image), used ONLY for the score. Create with
+#                    python scripts/00b_derive_embeddings.py --dataset cityscapes --features dinov2_vitb14 \
+#                        --method patch_dist --k 256 --n-sample 200 --seed 0
+#
+# q is a fraction of each image's FULL patch grid: q=0.05 -> top 69 of 1,369 patches at 518x518.
+# Sweep with --set selection.q=1.0|0.2|0.05|0.01 (q=1.0 = all patches, the "no tail" control).
+# The selection --seed seeds only the image k-means; the vocabulary is a fixed derivation (seed 0).
+#
+# name: auto -> proto-hard-k50-bal50-dinov2vitb14-patchmean-tailq5-dinov2vitb14-patchdist-K256-nsample200-seed0
+name: auto
+method: prototypicality
+k: 50
+keep: hard
+balance: 0.5
+n_init: 10
+max_iter: 300
+score: patch_tail
+q: 0.05
+embedding:
+  source: derived
+  backbone: dinov2_vitb14
+  method: patch_mean
+  params: {}
+  split: train
+patch_scores:
+  source: derived
+  backbone: dinov2_vitb14
+  method: patch_dist
+  params: {K: 256, n_sample: 200, seed: 0}   # must equal the 00b params exactly
+  split: train
