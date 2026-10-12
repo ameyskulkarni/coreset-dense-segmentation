@@ -2,7 +2,24 @@
 or disabling the logging backend touches only this file."""
 from __future__ import annotations
 
+import hashlib
+
 from omegaconf import DictConfig, OmegaConf
+
+MAX_TAG_LEN = 64  # wandb rejects longer tags (ValueError in wandb.init)
+
+
+def fit_tag(tag: str) -> str:
+    """Return `tag` unchanged if W&B accepts its length, else a unique shortened form.
+
+    Long selection names (e.g. the patch-tail ones, ~97 chars) become their first 55
+    characters + `-` + an 8-char hash of the full name, so distinct names stay distinct tags.
+    The full name is still in the run name and `config.selection_method`.
+    """
+    if len(tag) <= MAX_TAG_LEN:
+        return tag
+    digest = hashlib.sha1(tag.encode()).hexdigest()[:8]
+    return f"{tag[:MAX_TAG_LEN - 9]}-{digest}"
 
 
 def init_wandb(cfg: DictConfig, run_name: str, tags: list[str] | None = None,
@@ -23,7 +40,7 @@ def init_wandb(cfg: DictConfig, run_name: str, tags: list[str] | None = None,
         cfg: Full resolved run config; optional `wandb:` block with `project`, `entity`,
             and `mode`.
         run_name: Display name of the run.
-        tags: Optional W&B tags.
+        tags: Optional W&B tags (over-long ones are shortened by `fit_tag`).
         extra_config: Extra top-level config keys (override same-named `cfg` keys).
 
     Returns:
@@ -39,7 +56,7 @@ def init_wandb(cfg: DictConfig, run_name: str, tags: list[str] | None = None,
         project=wandb_cfg.get("project", "coreset-dense-segmentation"),
         entity=wandb_cfg.get("entity"),
         name=run_name,
-        tags=tags,
+        tags=[fit_tag(t) for t in tags] if tags else tags,
         mode=wandb_cfg.get("mode", "online"),
         config=config,
     )
