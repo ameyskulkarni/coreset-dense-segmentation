@@ -26,6 +26,10 @@ GPU-h come from `results/metrics/runs.csv` (matched on wandb_run_id) when availa
 W&B doesn't log them; otherwise n_img is "–" and GPU-h falls back to W&B runtime (marked †,
 includes final eval).
 
+Also regenerates docs/method_comparison.md in full on every run: every selection method vs
+the random baseline at each ratio (absolute mIoU / rare-class mIoU, Δ with ±1 std band
+verdicts, and per-class Δ IoU at --class-ratio from runs.csv). It holds no hand-written text.
+
 Usage:
     python scripts/05_wandb_report.py                      # append new runs to docs/results_wandb.md
     python scripts/05_wandb_report.py --dry-run            # print the new sections instead
@@ -36,6 +40,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import re
 import statistics
 import sys
@@ -48,6 +53,7 @@ DEFAULT_PROJECT = "coreset-dense-segmentation"
 DEFAULT_OUT = Path("docs/results_wandb.md")
 PROTECTED = Path("docs/results.md")  # hand-curated; this script must never write it
 DEFAULT_RUNS_CSV = Path("results/metrics/runs.csv")
+DEFAULT_OVERVIEW = Path("docs/method_comparison.md")
 
 # Name tokens that vary *within* an experiment family: ratio, seed, lr, config hash.
 _VARYING_TOKEN = re.compile(r"^(r\d+(\.\d+)?|s\d+|lr[\d.eE+-]+|[0-9a-f]{12})$")
@@ -478,6 +484,137 @@ def build_section(n: int, family: str, new: list[Run], family_all: list[Run], al
     return "\n".join(out)
 
 
+def class_names_for(dataset: str) -> list[str] | None:
+    """Class names from the dataset class, if it defines them statically (Cityscapes, CamVid)."""
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from segcoreset.data.registry import DATASET_REGISTRY
+        return list(getattr(DATASET_REGISTRY[dataset], "class_names", None) or []) or None
+    except Exception:  # noqa: BLE001 — names are cosmetic; fall back to ids
+        return None
+
+
+def build_overview(all_runs: list[Run], ledger: dict[str, dict], class_ratio: float) -> str:
+    """Cross-method comparison page: every selection method vs random, one table per metric.
+
+    Regenerated in full on every invocation (it holds no hand-written text). One block per
+    (dataset, model). The random baseline is the random family with the most runs, so
+    calibration runs (`disccheck`) never serve as the baseline.
+    """
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    out = [
+        "# Method comparison vs random (auto-generated)",
+        "",
+        f"Regenerated in full by `scripts/05_wandb_report.py` on {stamp}; do not edit by hand (notes "
+        "belong in `docs/results_wandb.md`). Final-eval metrics in %, mean over seeds.",
+        "",
+        "**How to read:** Δ = method mean − random mean at the same ratio, in points. "
+        "**▲ / ▼ = outside random's ±1 std band** (the plan §7 bar for a win / a loss); unmarked = "
+        "inside the band, i.e. not distinguishable from random. Each cell is 3 seeds unless marked (n=…). "
+        "Methods are the selection presets; `cls` / `patchmean` is the embedding the selector used.",
+        "",
+    ]
+    by_dm = defaultdict(list)
+    for r in all_runs:
+        by_dm[(r.dataset, r.model)].append(r)
+
+    for (dataset, model), runs in sorted(by_dm.items()):
+        randoms = defaultdict(list)
+        for r in runs:
+            if r.method == "random":
+                randoms[r.family].append(r)
+        methods = sorted({r.method for r in runs if r.method not in ("random", "full")})
+        if not randoms or not methods:
+            continue
+        base_fam = max(randoms, key=lambda f: (len(randoms[f]), max(r.created_at for r in randoms[f])))
+        base = randoms[base_fam]
+        ratios = sorted({r.ratio for r in base}, reverse=True)
+
+        def cell_runs(method: str, ratio: float) -> list[Run]:
+            return [r for r in runs if r.method == method and r.ratio == ratio]
+
+        def base_runs(m_runs: list[Run], ratio: float) -> list[Run]:
+            keys = {r.ref_key for r in m_runs}
+            return [r for r in base if r.ratio == ratio and r.ref_key in keys]
+
+        def n_tag(rs: list) -> str:
+            return "" if len(rs) == 3 else f" (n={len(rs)})"
+
+        out += [f"## {dataset} / {model}", "",
+                f"Random baseline: `{base_fam}` ({len(base)} runs). Methods: {len(methods)}.", ""]
+
+        # Absolute mIoU / rare mIoU.
+        for metric, label in (("miou", "mIoU"), ("rare_miou", "Rare-class mIoU")):
+            rows = []
+            for name in ["random"] + methods:
+                cells = []
+                for ratio in ratios:
+                    rs = [r for r in base if r.ratio == ratio] if name == "random" else cell_runs(name, ratio)
+                    vals = [getattr(r, metric) for r in rs]
+                    cells.append(mean_std(vals) + n_tag(rs) if rs else "–")
+                rows.append([f"**{name}**" if name == "random" else f"`{name}`"] + cells)
+            out += [f"### {label} (%), mean ± std", "",
+                    table(["Method"] + [fmt_ratio(x) for x in ratios], rows), ""]
+
+        # Deltas vs random.
+        for metric, label in (("miou", "mIoU"), ("rare_miou", "rare-class mIoU")):
+            rows = []
+            for name in methods:
+                cells, deltas, wins, losses, tested = [], [], 0, 0, 0
+                for ratio in ratios:
+                    rs = cell_runs(name, ratio)
+                    bs = base_runs(rs, ratio)
+                    m_vals = [getattr(r, metric) for r in rs if getattr(r, metric) is not None]
+                    b_vals = [getattr(r, metric) for r in bs if getattr(r, metric) is not None]
+                    if not m_vals or not b_vals:
+                        cells.append("–")
+                        continue
+                    d = 100 * (statistics.mean(m_vals) - statistics.mean(b_vals))
+                    sd = 100 * statistics.stdev(b_vals) if len(b_vals) > 1 else 0.0
+                    mark = " ▲" if d > sd and sd else " ▼" if d < -sd and sd else ""
+                    wins += mark == " ▲"
+                    losses += mark == " ▼"
+                    tested += 1
+                    deltas.append(d)
+                    cells.append(f"{d:+.2f}{mark}{n_tag(rs)}")
+                summary = f"{wins}▲ {losses}▼ / {tested}" if tested else "–"
+                avg = f"{statistics.mean(deltas):+.2f}" if deltas else "–"
+                rows.append([f"`{name}`"] + cells + [avg, summary])
+            out += [f"### Δ {label} vs random (points)", "",
+                    table(["Method"] + [fmt_ratio(x) for x in ratios] + ["Mean Δ", "Outside band"], rows), ""]
+
+        # Per-class deltas at one ratio (needs per-class IoU from runs.csv).
+        names = class_names_for(dataset)
+
+        def per_class(rs: list[Run]) -> dict[int, float] | None:
+            maps = [json.loads(ledger[r.id]["per_class_iou_json"]) for r in rs
+                    if r.id in ledger and ledger[r.id].get("per_class_iou_json")]
+            if not maps:
+                return None
+            return {int(c): statistics.mean(m[c] for m in maps) for c in maps[0]}
+
+        base_pc = per_class([r for r in base if r.ratio == class_ratio])
+        method_pc = {m: per_class(cell_runs(m, class_ratio)) for m in methods}
+        method_pc = {m: pc for m, pc in method_pc.items() if pc}
+        if base_pc and method_pc:
+            rare_ids = []
+            cache = (runs[0].config.get("dataset") or {}).get("rare_classes_cache")
+            if cache and Path(cache).exists():
+                rare_ids = json.loads(Path(cache).read_text())["rare_class_ids"]
+            # Rare classes, plus any class that moves >= 2 pts for some method.
+            movers = [c for c in sorted(base_pc) if c not in rare_ids
+                      and any(abs(pc[c] - base_pc[c]) >= 0.02 for pc in method_pc.values())]
+            cols = rare_ids + movers
+            label = lambda c: (names[c] if names and c < len(names) else f"class {c}") + (" ★" if c in rare_ids else "")  # noqa: E731
+            rows = [["**random IoU**"] + [f"{100 * base_pc[c]:.1f}" for c in cols]]
+            rows += [[f"`{m}`"] + [f"{100 * (pc[c] - base_pc[c]):+.1f}" for c in cols] for m, pc in method_pc.items()]
+            out += [f"### Per-class Δ IoU vs random at ratio {class_ratio:g} (points)", "",
+                    "★ = frozen rare class (counted in rare-class mIoU). Other columns: classes that move by "
+                    "≥ 2 points for at least one method. First row is random's absolute IoU for scale.", "",
+                    table(["Method"] + [label(c) for c in cols], rows), ""]
+    return "\n".join(out)
+
+
 def main():
     """CLI entry point: fetch W&B runs, append sections for the unreported ones."""
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -487,10 +624,14 @@ def main():
     parser.add_argument("--runs-csv", type=Path, default=DEFAULT_RUNS_CSV, help="ledger used for n_img / train GPU-h")
     parser.add_argument("--include", default=None, help="only report runs whose name matches this regex")
     parser.add_argument("--exclude", default=None, help="skip runs whose name matches this regex")
+    parser.add_argument("--overview", type=Path, default=DEFAULT_OVERVIEW,
+                        help=f"cross-method comparison page, regenerated in full each run (default {DEFAULT_OVERVIEW})")
+    parser.add_argument("--class-ratio", type=float, default=0.2, help="ratio for the overview's per-class table")
     parser.add_argument("--dry-run", action="store_true", help="print the new sections instead of writing")
     args = parser.parse_args()
-    if args.out.resolve() == PROTECTED.resolve():
-        parser.error(f"refusing to write {PROTECTED} (hand-curated); pick another --out")
+    for path in (args.out, args.overview):
+        if path.resolve() == PROTECTED.resolve():
+            parser.error(f"refusing to write {PROTECTED} (hand-curated); pick another path")
 
     text = args.out.read_text() if args.out.exists() else NEW_FILE_HEADER
     seen_ids = set(_RUN_ID_IN_MD.findall(text))
@@ -506,6 +647,12 @@ def main():
     for name, rid, reason in skipped:
         if rid not in seen_ids:
             print(f"skipped {name} ({rid}): {reason}", file=sys.stderr)
+
+    overview = build_overview(all_runs, ledger, args.class_ratio)
+    if not args.dry_run:
+        args.overview.parent.mkdir(parents=True, exist_ok=True)
+        args.overview.write_text(overview)
+        print(f"Regenerated {args.overview}", file=sys.stderr)
     if not new:
         print(f"No new finished runs ({len(all_runs)} finished in W&B, {len(seen_ids)} ids already in {args.out}).",
               file=sys.stderr)
