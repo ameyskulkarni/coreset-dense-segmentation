@@ -1,0 +1,18 @@
+# DINOv2 ViT-Base/14 with the image's ASPECT RATIO KEPT — otherwise identical to dinov2_vitb14.
+# dinov2_vitb14 resizes every frame to a 518x518 square, so a 2048x1024 Cityscapes frame is
+# squashed 2x horizontally (3.95 source px per input px across, 1.98 down): thin vertical
+# objects (pole, traffic light, sign, person) cover fewer patches across than they should.
+# This config resizes to 728 wide x 364 tall (landscape 2:1; image_size is [H, W] = [364, 728]),
+# a 26-row x 52-column grid = 1,352 patches: about the same token count as
+# 518x518 (1,369), so the comparison changes the aspect ratio, not the amount of compute or
+# the patch budget (2.81 source px per input px in both directions).
+# Cityscapes only (every frame is 2:1). Selection names carry the tag `dinov2vitb14keepar`.
+name: dinov2_vitb14_keepar
+backend: dinov2
+model_name: dinov2_vitb14
+source: torch_hub
+hub_repo: facebookresearch/dinov2
+patch_size: 14
+outputs: [cls, patch]
+image_size: [364, 728] # [H, W], both multiples of patch_size (14 * 26, 14 * 52)
+batch_size: 32
