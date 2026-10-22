@@ -1,0 +1,31 @@
+# Idea 2: patch-tail q5 with ONE change, the clusters used for balancing. Instead of patch-mean
+# image clusters (scene types), the k = 50 clusters come from each image's tail feature: the mean
+# DINOv2 feature of its top-5% most atypical patches (`tail_feature` derivation). Quotas then
+# spread the budget over kinds of atypical content (train vs bus vs construction ...).
+# Score, q, k, keep, balance, vocabulary and seeds are identical to
+# prototypicality-hard-patchtail.yaml (Exp 18), so the clusters are the only difference.
+# Needs:
+#   python scripts/00b_derive_embeddings.py --dataset cityscapes --features dinov2_vitb14 --method tail_feature --k 256 --n-sample 200 --seed 0 --tail-pct 5
+#
+# name: auto -> proto-hard-k50-bal50-dinov2vitb14-tailfeature-K256-nsample200-seed0-tailpct5-tailq5-dinov2vitb14-patchdist-K256-nsample200-seed0
+name: auto
+method: prototypicality
+k: 50
+keep: hard
+balance: 0.5
+n_init: 10
+max_iter: 300
+score: patch_tail
+q: 0.05
+embedding:
+  source: derived
+  backbone: dinov2_vitb14
+  method: tail_feature
+  params: {K: 256, n_sample: 200, seed: 0, tail_pct: 5}
+  split: train
+patch_scores:
+  source: derived
+  backbone: dinov2_vitb14
+  method: patch_dist
+  params: {K: 256, n_sample: 200, seed: 0}
+  split: train

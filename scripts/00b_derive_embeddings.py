@@ -8,8 +8,12 @@ Methods:
     kmeans_hist  per-image normalized histogram over K patch pseudo-classes (§5.3)
     patch_dist   per-image vector of every patch's cosine distance to its nearest pseudo-class
                  prototype (Proposal 1, "dense prototypicality"; row-major over the patch grid)
+    patch_label  per-image vector of every patch's nearest prototype id (aligned with patch_dist;
+                 for the patch_balance selector)
+    tail_feature mean feature of each image's top --tail-pct% most atypical patches (L2-normalized;
+                 clustering it groups images by the kind of atypical content they contain)
 
-kmeans_hist and patch_dist share one patch vocabulary per (K, n_sample, seed): spherical
+kmeans_hist, patch_dist, patch_label and tail_feature share one patch vocabulary per (K, n_sample, seed): spherical
 k-means on n_sample random patches per TRAIN image, saved to
 results/features/<dataset>/vocab/ and reused (segcoreset/features/patch_vocab.py).
 
@@ -17,6 +21,7 @@ Usage:
     python scripts/00b_derive_embeddings.py --dataset cityscapes --features dinov2_vitb14 --method patch_mean
     python scripts/00b_derive_embeddings.py --dataset cityscapes --features dinov2_vitb14 --method kmeans_hist --k 256 --n-sample 200 --seed 0
     python scripts/00b_derive_embeddings.py --dataset cityscapes --features dinov2_vitb14 --method patch_dist --k 256 --n-sample 200 --seed 0
+    python scripts/00b_derive_embeddings.py --dataset cityscapes --features dinov2_vitb14 --method tail_feature --k 256 --n-sample 200 --seed 0 --tail-pct 5
 """
 from __future__ import annotations
 
@@ -33,7 +38,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 
 from segcoreset.features.derived import DerivedStore
-from segcoreset.features.patch_vocab import VocabSpec, assign_patches, load_or_fit_vocabulary
+from segcoreset.features.patch_vocab import VocabSpec, assign_patches, flat_patches, load_or_fit_vocabulary
 from segcoreset.features.store import FeatureStore
 from segcoreset.utils.config import build_config, config_hash
 from segcoreset.utils.logging_setup import setup_logging
@@ -133,7 +138,58 @@ def _patch_dist(store, ids, vocab_ctx, **_):
     return np.stack(rows), "patch", spec.params()
 
 
-METHODS = {"cls": _cls, "patch_mean": _patch_mean, "kmeans_hist": _kmeans_hist, "patch_dist": _patch_dist}
+def _patch_label(store, ids, vocab_ctx, **_):
+    """Derivation `patch_label`: every patch's nearest vocabulary prototype id.
+
+    One row per image of length P, row-major over the patch grid and aligned patch-by-patch
+    with `patch_dist` for the same vocabulary (both come from `assign_patches`). Ids are
+    stored as float32 (exact for K < 2^24). Used by the `patch_balance` selector.
+
+    Args:
+        store: Raw `FeatureStore` for the split.
+        ids: Image ids, in output row order.
+        vocab_ctx: `(VocabSpec, dataset, train FeatureStore, train ids)`.
+
+    Returns:
+        `(prototype ids [N, P], source "patch", params {K, n_sample, seed})`.
+    """
+    spec = vocab_ctx[0]
+    rows = [lab.astype(np.float32) for lab, _ in _vocab_assignments(store, ids, vocab_ctx, f"patch labels K={spec.K}")]
+    return np.stack(rows), "patch", spec.params()
+
+
+def _tail_feature(store, ids, vocab_ctx, tail_pct=5, **_):
+    """Derivation `tail_feature`: mean feature of each image's most atypical patches, L2-normalized.
+
+    The patches are the top `tail_pct`% by cosine distance to the patch vocabulary, the same
+    `ceil(q * P)` patches the patch-tail score averages (`tail_mean`), so this is "what the
+    tail looks like" rather than "how far out it is". Clustering it groups images by the kind
+    of atypical content they contain (Idea 2: balance quotas over atypical patterns).
+
+    Args:
+        store: Raw `FeatureStore` for the split.
+        ids: Image ids, in output row order.
+        vocab_ctx: `(VocabSpec, dataset, train FeatureStore, train ids)`.
+        tail_pct: Tail size in percent of the image's patches.
+
+    Returns:
+        `(embeddings [N, D], source "patch", params {K, n_sample, seed, tail_pct})`.
+    """
+    spec, dataset, train_store, train_ids = vocab_ctx
+    vocab = load_or_fit_vocabulary(spec, dataset, train_store, train_ids)
+    C = torch.from_numpy(vocab.centroids).to("cuda" if torch.cuda.is_available() else "cpu")
+    out = []
+    for i in tqdm(ids, desc=f"tail features K={spec.K} tail {tail_pct}%"):
+        p = flat_patches(store.load(i)).to(C.device)  # [P, D] unit-norm
+        dist = 1.0 - (p @ C.T).max(dim=1).values
+        m = int(np.ceil(tail_pct / 100 * len(p)))
+        top = dist.topk(m).indices
+        out.append(F.normalize(p[top].mean(dim=0), dim=-1).cpu().numpy())
+    return np.stack(out), "patch", {**spec.params(), "tail_pct": tail_pct}
+
+
+METHODS = {"cls": _cls, "patch_mean": _patch_mean, "kmeans_hist": _kmeans_hist, "patch_dist": _patch_dist,
+           "patch_label": _patch_label, "tail_feature": _tail_feature}
 
 
 def main():
@@ -151,6 +207,7 @@ def main():
     parser.add_argument("--n-sample", type=int, default=200,
                         help="kmeans_hist/patch_dist: patches sampled per train image to fit the vocabulary")
     parser.add_argument("--seed", type=int, default=0, help="kmeans_hist/patch_dist: vocabulary sample + k-means seed")
+    parser.add_argument("--tail-pct", type=int, default=5, help="tail_feature: tail size in percent of each image's patches")
     args = parser.parse_args()
 
     setup_logging()
@@ -167,7 +224,7 @@ def main():
     train_store = raw if args.split == "train" else FeatureStore(train_dir)  # vocabularies are always fitted on train
     vocab_ctx = (VocabSpec(cfg.features.name, K=args.k, n_sample=args.n_sample, seed=args.seed),
                  cfg.dataset.name, train_store, sorted(train_store.cached_ids()))
-    emb, source, params = METHODS[args.method](raw, ids, vocab_ctx=vocab_ctx)
+    emb, source, params = METHODS[args.method](raw, ids, vocab_ctx=vocab_ctx, tail_pct=args.tail_pct)
     store = DerivedStore(cfg.dataset.name)
     store.add(ids, emb, split=args.split, backbone=cfg.features.name, source=source,
               method=args.method, params=params, config_hash=config_hash(cfg),

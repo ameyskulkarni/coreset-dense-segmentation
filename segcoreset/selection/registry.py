@@ -3,19 +3,21 @@ label-free baselines (k-center, SemDeDup, bpp, ZCore) and `patch_coverage` (§5)
 in as new modules here without touching the trainer, evaluator, or scripts."""
 from __future__ import annotations
 
-from . import full_select, proto_fused, prototypicality, random_select
+from . import full_select, patch_balance, proto_fused, prototypicality, random_select
 
 SELECTOR_REGISTRY = {
     "random": random_select.select,
     "full": full_select.select,
     "prototypicality": prototypicality.select,  # docs/prototypicality.md
     "proto_fused": proto_fused.select,  # rank-fused cls/pmean/tail prototypicality
+    "patch_balance": patch_balance.select,  # Idea 1: atypicality-weighted concave patch-vocabulary coverage
 }
 
 # Methods that support `name: auto` (a name generated from every subset-changing setting).
 AUTO_NAMERS = {
     "prototypicality": prototypicality.auto_name,
     "proto_fused": proto_fused.auto_name,
+    "patch_balance": patch_balance.auto_name,
 }
 
 

@@ -1,0 +1,27 @@
+# Idea 1, patch balance (segcoreset/selection/patch_balance.py): greedily maximize
+#   f(S) = sum_j ( sum_{i in S} m_ij )^alpha,   m_ij = sum of (d_p / mean d)^gamma over image i's patches on prototype j
+# over the K256 patch vocabulary (the same one patch-tail q5 uses).
+#   alpha  diminishing returns per prototype (diversity; flattens the pseudo-class pixel distribution)
+#   gamma  atypicality tilt per patch (d_p = cosine distance to its prototype, as in patch_dist)
+# Defaults alpha = 0.5, gamma = 1 were fixed before any screen or training: don't tune them on Cityscapes val.
+# Deterministic greedy: the --seed does not change the subset (seeds only vary training).
+# Needs the patch_label derivation:
+#   python scripts/00b_derive_embeddings.py --dataset cityscapes --features dinov2_vitb14 --method patch_label --k 256 --n-sample 200 --seed 0
+#
+# name: auto -> patchbal-a50-g100-dinov2vitb14-patchlabel-K256-nsample200-seed0
+name: auto
+method: patch_balance
+alpha: 0.5
+gamma: 1.0
+embedding:        # per-patch prototype ids
+  source: derived
+  backbone: dinov2_vitb14
+  method: patch_label
+  params: {K: 256, n_sample: 200, seed: 0}
+  split: train
+patch_scores:     # per-patch distances, same vocabulary
+  source: derived
+  backbone: dinov2_vitb14
+  method: patch_dist
+  params: {K: 256, n_sample: 200, seed: 0}
+  split: train
