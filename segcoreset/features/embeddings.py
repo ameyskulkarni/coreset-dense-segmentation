@@ -154,15 +154,21 @@ def load_selection_features(dataset: str, image_ids: Sequence[str], sel_cfg, roo
 
     Returns:
         `None` if there is no `embedding:` block; the `[N, D]` matrix if there is only
-        `embedding:`; else the dict `{"embedding": [N, D], "patch_scores": [N, P]}`.
+        `embedding:`; else the dict `{"embedding": [N, D], "patch_scores": [N, P]}` (plus
+        `"extra": {name: [N, D]}` for an optional `extra_embeddings:` block).
     """
     if "embedding" not in sel_cfg:
         return None
     X = load_embedding_matrix(dataset, image_ids, EmbeddingSpec.from_cfg(sel_cfg["embedding"]), root=root)
-    if "patch_scores" not in sel_cfg:
+    if "patch_scores" not in sel_cfg and "extra_embeddings" not in sel_cfg:
         return X
-    P = load_embedding_matrix(dataset, image_ids, EmbeddingSpec.from_cfg(sel_cfg["patch_scores"]), root=root)
-    return {"embedding": X, "patch_scores": P}
+    out = {"embedding": X}
+    if "patch_scores" in sel_cfg:
+        out["patch_scores"] = load_embedding_matrix(dataset, image_ids, EmbeddingSpec.from_cfg(sel_cfg["patch_scores"]), root=root)
+    if "extra_embeddings" in sel_cfg:  # named extra matrices (proto_fused's `cls` view)
+        out["extra"] = {name: load_embedding_matrix(dataset, image_ids, EmbeddingSpec.from_cfg(block), root=root)
+                        for name, block in sel_cfg["extra_embeddings"].items()}
+    return out
 
 
 def _load_derived(dataset: str, ids: list[str], spec: EmbeddingSpec, root: Path) -> np.ndarray:

@@ -1,0 +1,38 @@
+# Fused prototypicality (segcoreset/selection/proto_fused.py): rank-fuse three hardness views
+# into one score, then prune exactly like prototypicality-hard-patchtail.
+#   cls    distance to the nearest of k_cls CLS prototypes      (extra_embeddings.cls)
+#   pmean  distance to the nearest of k patch-mean prototypes   (embedding:, also the balancing clusters)
+#   tail   top-q patch distances to the patch vocabulary         (patch_scores:)
+# fusion: meanrank (average percentile) | minrank (min percentile = all views must agree).
+# Rules are FIXED, no weights: don't tune them on Cityscapes val.
+# Same embedding/k/balance/seed as the patch-tail q5 run -> same clusters, score is the only difference.
+name: auto
+method: proto_fused
+k: 50
+k_cls: 20
+keep: hard
+balance: 0.5
+n_init: 10
+max_iter: 300
+q: 0.05
+fusion: meanrank
+views: [cls, pmean, tail]
+embedding:
+  source: derived
+  backbone: dinov2_vitb14
+  method: patch_mean
+  params: {}
+  split: train
+patch_scores:
+  source: derived
+  backbone: dinov2_vitb14
+  method: patch_dist
+  params: {K: 256, n_sample: 200, seed: 0}
+  split: train
+extra_embeddings:
+  cls:
+    source: derived
+    backbone: dinov2_vitb14
+    method: cls
+    params: {}
+    split: train
