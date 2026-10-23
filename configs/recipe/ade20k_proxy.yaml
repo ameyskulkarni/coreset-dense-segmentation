@@ -1,19 +1,26 @@
-# The proxy training recipe (§4, ADR 0001) for ADE20K method comparisons. Same
-# schedule/optimizer as cityscapes_proxy, but NOT the same LR: Cityscapes was swept to 1e-4
-# (ADR 0001 Amendment 3); 6e-5 here is the SegFormer literature default and has NOT been
-# swept for ADE20K — run an LR sweep + discriminativeness check before reporting results.
-# `epochs` differs because ADE20K's
-# full train set (20,210 imgs) is ~7x larger than Cityscapes' (2,975), so the SAME epoch
-# count would mean ~7x more compute per run. 8 epochs (20210/8=2526 steps/epoch) is
-# ~20,210 steps, matching the pre-ADR 20,000-iteration budget almost exactly.
+# The proxy training recipe (ADR 0001, epoch-based) for ADE20K method comparisons. Tune ONCE
+# on the full dataset only; freeze and reuse identically across every selection method,
+# ratio, and seed.
 #
-# NOTE: with only 8 total epochs, 1 warmup epoch is 12.5% of the schedule (vs ~6% for
-# Cityscapes) — an unavoidable granularity effect of expressing warmup in whole epochs
-# on a short schedule. Revisit if the discriminativeness check (§4) shows this recipe
-# underperforms because of it.
+# `epochs: 100` and `warmup_epochs: 6` match cityscapes_proxy exactly (warmup = 6% of the
+# schedule), so the two datasets differ only in dataset-calibrated values (lr) and the
+# dataset itself. (The earlier value, 8 epochs, only matched an old fixed 20k-iteration
+# budget and had no measured basis.) 100 epochs on full ADE20K (20,210 imgs / batch 8 =
+# 2,526 steps/epoch) is 252,600 steps. MEASURED throughput on one RTX 3090 (SegFormer-B0,
+# 512x512 crops, AMP, 8 workers, 2026-10-23 benchmark): batch 8 = 114 ms/step ~ 254k
+# imgs/h, so one full run is ~8 GPU-hours of training plus evals; a ratio-r subset run is
+# ~8r hours.
+#
+# `batch_size: 8` = cityscapes_proxy. Batch 16 was measured at 262k imgs/h (~3% faster per
+# epoch), so it would save no meaningful time, and under epoch-based training it would halve
+# the number of optimizer steps, which matters most for small subsets.
+#
+# `lr` is NOT frozen yet: 6e-5 is a placeholder (SegFormer literature default). The LR sweep
+# in scripts/experiments/run_ade20k.sh (full data, 100 epochs, seed 0, lr in {1e-4, 2e-4,
+# 6e-5}) sets it; record the winner and its evidence here before any method run.
 name: ade20k_proxy
-epochs: 8
-warmup_epochs: 1
+epochs: 100
+warmup_epochs: 6
 batch_size: 8
 optimizer: adamw
 lr: 6.0e-5
@@ -26,8 +33,8 @@ precision: amp_fp16
 grad_clip_norm: null
 num_workers: 8
 seed_train: 0
-eval_every_epochs: 1
+eval_every_epochs: 5 # periodic in-training eval (fast, whole-image, 100-image subsample); = cityscapes_proxy
 eval_max_images: 100
 eval_resize_short_side: 512
-save_every_epochs: 1
+save_every_epochs: 5
 log_every: 50
