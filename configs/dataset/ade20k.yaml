@@ -8,7 +8,7 @@ train_split: training
 val_split: validation
 crop_size: [512, 512] # [H, W]
 photometric_jitter: true
-rare_class_k: 15 # bottom-K by pixel frequency; override with --k in 01_compute_rare_classes.py
+rare_class_k: 38 # bottom quartile of classes by train pixel frequency, ceil(0.25 * 150); same rule gives Cityscapes its 5. K=15 list kept in results/rare_classes/ade20k_k15.json for robustness
 rare_classes_cache: results/rare_classes/ade20k.json
 eval:
   mode: whole_image # §2: single-scale whole-image eval
