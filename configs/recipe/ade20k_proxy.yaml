@@ -15,9 +15,16 @@
 # epoch), so it would save no meaningful time, and under epoch-based training it would halve
 # the number of optimizer steps, which matters most for small subsets.
 #
-# `lr` is NOT frozen yet: 6e-5 is a placeholder (SegFormer literature default). The LR sweep
-# in scripts/experiments/run_ade20k.sh (full data, 100 epochs, seed 0, lr in {1e-4, 2e-4,
-# 6e-5}) sets it; record the winner and its evidence here before any method run.
+# `lr: 6.0e-5` FROZEN (2026-10-24) via the LR sweep in scripts/experiments/run_ade20k.sh,
+# full data, 100 epochs, seed 0 (runs ade_lrsweep_lr{6e-5,1e-4,2e-4}_full_s0):
+#   lr=6e-5 -> mIoU 36.25%, rare_class_miou (K=38) 28.76%  <- winner on mIoU and rare mIoU
+#   lr=1e-4 -> mIoU 36.06%, rare_class_miou 28.43%
+#   lr=2e-4 -> mIoU 35.96%, rare_class_miou 28.18%
+# Unlike Cityscapes (1e-4 won by 1.35 mIoU) the curve is FLAT: 0.29 mIoU spread, likely
+# within seed noise; pixel acc / boundary F lean the other way (2e-4 best). Full ADE20K is
+# 252.6k steps vs Cityscapes' 37.1k, so a higher LR has no step deficit to make up. The pick
+# follows the rule fixed before the sweep (best final mIoU). One AdamW param group, so this
+# equals mmseg's SegFormer base LR but WITHOUT its 10x decode-head multiplier / no-decay norms.
 name: ade20k_proxy
 epochs: 100
 warmup_epochs: 6
